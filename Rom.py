@@ -43,7 +43,7 @@ from source.enemizer.Enemizer import write_enemy_shuffle_settings
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = 'd2f1b8b15480a08856f6902c74adfc02'
+RANDOMIZERBASEHASH = 'f2eebfbec9c8ad638e922ed1047d1c10'
 
 
 class JsonRom(object):
@@ -1264,8 +1264,8 @@ def patch_rom(world, rom, player, team, is_mystery=False, rom_header=None):
                 else:
                     goal_bytes += int16_as_bytes(req['target'])
             elif req['condition'] & 0x80 == 0:
-                if req['condition'] & 0x7F == 0x06 or req['condition'] & 0x7F == 0x07:
-                    # agahnims have no target value
+                if req['condition'] & 0x7F in [0x00, 0x06, 0x07]:
+                    # no target value
                     pass
                 elif req['condition'] & 0x7F < 0x08:
                     goal_bytes += [req['target']]
