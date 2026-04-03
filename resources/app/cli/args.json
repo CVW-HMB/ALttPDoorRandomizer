@@ -4,6 +4,13 @@
     "action": "store_true",
     "type": "bool"
   },
+  "limited_run": {
+    "choices": [
+      "none",
+      "2604"
+    ]
+  },
+  "limited_run_args": {},
   "spoiler": {
     "choices": [
       "none",

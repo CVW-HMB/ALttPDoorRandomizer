@@ -40,6 +40,8 @@ from source.classes.CustomSettings import CustomSettings
 from source.enemizer.DamageTables import DamageTable
 from source.enemizer.Enemizer import randomize_enemies
 from source.rom.DataTables import init_data_tables
+from source.limited.LimitedRunCoordinator import adjust_world_for_limited_runs
+from source.rom.DataTables import init_data_tables, init_custom_rooms, init_custom_sprites
 
 version_number = '1.5.6'
 version_branch = '-u'
@@ -61,7 +63,7 @@ def check_python_version():
 
 def main(args, seed=None, fish=None):
     check_python_version()
-    
+
     if args.print_template_yaml:
         return export_yaml(args, fish)
 
@@ -143,6 +145,8 @@ def main(args, seed=None, fish=None):
     if args.mystery and not args.suppress_meta:
         world.spoiler.mystery_meta_to_file(output_path(f'{outfilebase}_meta.txt'))
 
+    adjust_world_for_limited_runs(world, args)
+
     for player in range(1, world.players + 1):
         create_regions(world, player)
         create_dungeon_regions(world, player)
@@ -153,6 +157,10 @@ def main(args, seed=None, fish=None):
         create_dungeons(world, player)
         world.damage_table[player] = DamageTable()
         world.data_tables[player] = init_data_tables(world, player)
+        if world.customizer and world.customizer.get_custom_rooms(player):
+            init_custom_rooms(world, player, world.customizer.get_custom_rooms(player))
+        if world.customizer and world.customizer.get_custom_sprites(player):
+            init_custom_sprites(world, player, world.customizer.get_custom_sprites(player))
         place_bosses(world, player)
         randomize_enemies(world, player)
         adjust_locations(world, player)
@@ -172,7 +180,7 @@ def main(args, seed=None, fish=None):
         link_overworld(world, player)
         create_shops(world, player)
         mark_light_dark_world_regions(world, player)
-    
+
     init_districts(world)
 
     logger.info(world.fish.translate("cli","cli","shuffling.world"))
@@ -287,7 +295,8 @@ def main(args, seed=None, fish=None):
         logger.info(world.fish.translate("cli","cli","patching.rom"))
         for team in range(world.teams):
             for player in range(1, world.players + 1):
-                rom = JsonRom() if args.jsonout else LocalRom(args.rom)
+                limited_run_flag = None if world.limited_run[player] == 'none' else world.limited_run[player]
+                rom = JsonRom() if args.jsonout else LocalRom(args.rom, flag=limited_run_flag)
 
                 patch_rom(world, rom, player, team, bool(args.mystery), str(args.rom_header) if args.rom_header else None)
 
@@ -303,11 +312,12 @@ def main(args, seed=None, fish=None):
                                    args.shuffle_sfx[player], args.shuffle_sfxinstruments[player], args.shuffle_songinstruments[player],
                                    args.msu_resume[player])
 
+                limited_run_flag = None if world.limited_run[player] == 'none' else world.limited_run[player]
                 if args.jsonout:
                     jsonout[f'patch_t{team}_p{player}'] = rom.patches
                     if args.bps:
-                        localRom = LocalRom.fromJsonRom(rom, args.rom)
-                        patch = create_bps_from_data(LocalRom(args.rom, patch=False).buffer, localRom.buffer)
+                        localRom = LocalRom.fromJsonRom(rom, args.rom, flag=limited_run_flag)
+                        patch = create_bps_from_data(LocalRom(args.rom, patch=False, flag=limited_run_flag).buffer, localRom.buffer)
                         jsonout[f'bps_t{team}_p{player}'] = base64.b64encode(patch.binary_ba).decode()
                 else:
                     outfilepname = f'_T{team+1}' if world.teams > 1 else ''
@@ -318,7 +328,7 @@ def main(args, seed=None, fish=None):
                     outfilesuffix = f'_{Settings.make_code(world, player)}' if not args.outputname else ''
                     if args.bps:
                         patchfile = output_path(f'{outfilebase}{outfilepname}{outfilesuffix}.bps')
-                        patch = create_bps_from_data(LocalRom(args.rom, patch=False).buffer, rom.buffer)
+                        patch = create_bps_from_data(LocalRom(args.rom, patch=False, flag=limited_run_flag).buffer, rom.buffer)
                         with open(patchfile, 'wb') as stream:
                             stream.write(patch.binary_ba)
                     if not args.suppress_rom:
@@ -409,7 +419,7 @@ def export_yaml(args, fish):
 
     for player in range(1, world.players + 1):
         world.difficulty_requirements[player] = difficulties[world.difficulty[player]]
-    
+
     set_starting_inventory(world, args)
 
     world.settings = CustomSettings()
@@ -492,6 +502,8 @@ def init_world(args, fish):
     world.colorizepots = args.colorizepots.copy()
     world.aga_randomness = args.aga_randomness.copy()
     world.money_balance = args.money_balance.copy()
+    world.limited_run = args.limited_run.copy()
+    world.limited_run_args = args.limited_run_args.copy()
 
     # custom settings - these haven't been promoted to full settings yet
     in_progress_settings = ['force_enemy', 'free_lamp_cone']
@@ -499,7 +511,7 @@ def init_world(args, fish):
         for setting in in_progress_settings:
             if world.customizer and world.customizer.has_setting(player, setting):
                 getattr(world, setting)[player] = world.customizer.get_setting(player, setting)
-    
+
     return world
 
 
@@ -807,6 +819,8 @@ def copy_world(world):
     ret.prizes = world.prizes.copy()
     ret.restrict_boss_items = world.restrict_boss_items.copy()
     ret.inaccessible_regions = world.inaccessible_regions.copy()
+    ret.limited_run = world.limited_run.copy()
+    ret.limited_run_args = world.limited_run_args.copy()
     ret.damage_table = world.damage_table
     ret.data_tables = world.data_tables  # can be changed...
     ret.settings = world.settings
@@ -908,7 +922,7 @@ def copy_world(world):
         if edge.dest:
             copiededge = ret.check_for_owedge(edge.name, edge.player)
             copiededge.dest = ret.check_for_owedge(edge.dest.name, edge.dest.player)
-    
+
     # everything below this line is changing the original object, seems to be complicated to replicate similar objects organically
     ret.doors = world.doors
     for door in ret.doors:
@@ -916,7 +930,7 @@ def copy_world(world):
         door.entrance = copied_entrance
         if copied_entrance:
             copied_entrance.door = door
-    
+
     ret.paired_doors = world.paired_doors
     ret.rooms = world.rooms
     ret.dungeon_layouts = world.dungeon_layouts
@@ -1032,6 +1046,8 @@ def copy_world_premature(world, player, create_flute_exits=True):
     ret.damage_table = world.damage_table
     ret.data_tables = world.data_tables  # can be changed...
     ret.key_logic = world.key_logic.copy()
+    ret.limited_run = world.limited_run.copy()
+    ret.limited_run_args = world.limited_run_args.copy()
     ret.settings = world.settings
 
     ret.is_premature_copied_world = True

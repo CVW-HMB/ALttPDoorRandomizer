@@ -47,6 +47,7 @@ class EnemyStats:
 class EnemySprite(FastEnum):
     Raven = 0x00
     Vulture = 0x01
+    CustomSprite = 0x03
     CorrectPullSwitch = 0x04
     WrongPullSwitch = 0x06
     Octorok = 0x08
@@ -287,6 +288,7 @@ def init_enemy_stats():
     stats = {
         EnemySprite.Raven: EnemyStats(EnemySprite.Raven, False, False, (6, 2), health=(4, 8), dmg=(1, 8), dmask=0x80),
         EnemySprite.Vulture: EnemyStats(EnemySprite.Vulture, False, False, 6, health=6, dmg=3, dmask=0x80),
+        EnemySprite.CustomSprite: EnemyStats(EnemySprite.CustomSprite, True, ignore=True, dmg=0),
         EnemySprite.CorrectPullSwitch: EnemyStats(EnemySprite.CorrectPullSwitch, True, ignore=True, dmg=2),
         EnemySprite.WrongPullSwitch: EnemyStats(EnemySprite.WrongPullSwitch, True, ignore=True, dmg=2),
         EnemySprite.Octorok: EnemyStats(EnemySprite.Octorok, False, True, 2, health=(2, 4), dmg=(3, 5)),
@@ -572,6 +574,23 @@ class Sprite(object):
 
     def __str__(self):
         return enemy_names[self.kind] if self.sub_type != 0x7 else overlord_names[self.kind]
+
+    @staticmethod
+    def factory(room_id, kind, tile_x, tile_y, layer, sub_type=0x00):
+        """Create a sprite from basic parameters.
+
+        Args:
+            room_id: Room number (super_tile)
+            kind: Sprite kind ID (hex)
+            tile_x: X tile position (hex)
+            tile_y: Y tile position (hex)
+            layer: Layer (0 or 1)
+            sub_type: Subtype (hex, defaults to 0x00)
+
+        Returns:
+            Sprite object
+        """
+        return Sprite(room_id, kind, sub_type, layer, tile_x, tile_y)
 
 
 # map of super_tile to list of Sprite objects:
@@ -2334,6 +2353,7 @@ def add_drop_contents(world, player):
 enemy_names = {
     0x00: 'Raven',
     0x01: 'Vulture',
+    0x03: 'CustomSprite',
     0x04: 'CorrectPullSwitch',
     0x06: 'WrongPullSwitch',
     0x08: 'Octorok',
@@ -2574,6 +2594,8 @@ overlord_names = {
     0x19: 'ArmosCoordinator', 0x1A: 'BombTrap',
 }
 
+overlord_translation = {b: a for a, b in overlord_names.items()}
+
 sprite_translation = {
     'RollerVerticalDown': EnemySprite.RollerVerticalDown,
     'RollerVerticalUp': EnemySprite.RollerVerticalUp,
@@ -2680,4 +2702,12 @@ sprite_translation = {
     'Wizzrobe': EnemySprite.Wizzrobe,
     'Zora': EnemySprite.Zora,
     'Zoro': EnemySprite.Zoro,
+    'CustomSprite': EnemySprite.CustomSprite,
+
+    'CorrectPullSwitch': EnemySprite.CorrectPullSwitch,
+    'LaserEyeLeft': EnemySprite.LaserEyeLeft,
+    'LaserEyeRight': EnemySprite.LaserEyeRight,
+    'UnclePriest': EnemySprite.UnclePriest,
+    'RupeePull': EnemySprite.RupeePull,
+    'CrystalSwitch': EnemySprite.CrystalSwitch,
 }

@@ -175,6 +175,7 @@ def init_sprite_requirements():
     reqs = [
         SpriteRequirement(EnemySprite.Raven).no_drop().sub_group(3, [0x11, 0x19]).exclude(NoFlyingRooms),
         SpriteRequirement(EnemySprite.Vulture).no_drop().sub_group(2, 0x12).exclude(NoFlyingRooms),
+        SpriteRequirement(EnemySprite.CustomSprite).no_drop().skip().ow_skip(),
         SpriteRequirement(EnemySprite.CorrectPullSwitch).affix().sub_group(3, [0x52, 0x53]),
         SpriteRequirement(EnemySprite.WrongPullSwitch).affix().sub_group(3, [0x52, 0x53]),
         SpriteRequirement(EnemySprite.Octorok).sub_group(2, [0xc, 0x18]),
@@ -557,14 +558,17 @@ def init_sprite_sheets(requirements):
     return sheets
 
 
-def setup_required_dungeon_groups(sheets, data_tables):
+def setup_required_dungeon_groups(sheets, data_tables, limited_run=None):
 
     sheets[did(1)].add_sprite_to_sheet([None, None, 28, None], {0xe4, 0xf0})  # old man
     # various npcs
     sheets[did(5)].add_sprite_to_sheet([75, 77, 74, 90], {0xf3, 0xff, 0x109, 0x10e, 0x10f, 0x110, 0x111, 0x112,
                                                           0x11a, 0x11c, 0x11f, 0x122})
     sheets[did(7)].add_sprite_to_sheet([75, 77, 57, 54], {0x8, 0x2c, 0x114, 0x115, 0x116})  # big fairies
-    sheets[did(13)].add_sprite_to_sheet([81, None, None, None], {0x55, 0x102, 0x104})  # uncle, sick kid
+    if limited_run == '2604':
+        sheets[did(13)].add_sprite_to_sheet([81, None, None, 0x50], {0x55, 0x102, 0x104})  # uncle, sick kid
+    else:
+        sheets[did(13)].add_sprite_to_sheet([81, None, None, None], {0x55, 0x102, 0x104})  # uncle, sick kid
     sheets[did(14)].add_sprite_to_sheet([71, 73, 76, 80], {0x12, 0x105, 0x10a})  # wisemen
     sheets[did(15)].add_sprite_to_sheet([79, 77, 74, 80], {0xf4, 0xf5, 0x101, 0x103, 0x106, 0x118, 0x119})  # more npcs
     sheets[did(18)].add_sprite_to_sheet([85, 61, 66, 67], {0x20, 0x30})  # aga alter, aga1
@@ -592,7 +596,7 @@ def setup_required_dungeon_groups(sheets, data_tables):
         ([None, None, None, (82, 83)], [0xb, 0x13, 0x1b, 0x1e, 0x2a, 0x2b, 0x31, 0x5b, 0x6b, 0x77, 0x8b,
                                         0x91, 0x92, 0x9b, 0x9d, 0xa1, 0xab, 0xbf, 0xc4, 0xef]),
         # laser eyes - split for some reason
-        ([None, None, None, (82, 83)], [0x13, 0x23, 0x96, 0xa5, 0xc5, 0xd5]),
+        ([None, None, None, (82, 83)], [0x13, 0x23, 0x96, 0xa5, 0xc5, 0xd5] + ([0x101] if limited_run == '2604' else [])),
         # statues - split for some reason
         ([None, None, None, (82, 83)], [0x26, 0x2b, 0x40, 0x4a, 0x6b, 0x7b]),
         ([None, None, None, 83], [0x43, 0x63, 0x87]),  # tile rooms
@@ -601,7 +605,7 @@ def setup_required_dungeon_groups(sheets, data_tables):
         ([None, None, None, 82], [0x58, 0x8c, 0x10b]),  # pull switches
         ([None, None, (28, 36), 82], [0x2, 0x64]),  # pull switches (snakes)
         ([None, None, None, 82], [0x1a, 0x3d, 0x44, 0x5e, 0x7c, 0x95, 0xc3]),  # collapsing bridges
-        ([None, None, None, 83], [0x3f, 0xce]),  # pull tongue
+        ([None, None, None, 83], [0x3f, 0xce] + ([0x5f] if limited_run == '2604' else [])),  # pull tongue
         ([None, None, None, 83], [0x35, 0x37]),  # swamp drains
         ([None, None, 34, None], [0x28]),  # tektike forced? - spawn chest
         ([None, None, 37, None], [0x97]),  # wizzrobe spawner - in middle of room...
@@ -696,8 +700,8 @@ def setup_custom_enemy_sheets(custom_enemies, sheets, data_tables, sheet_range, 
         find_matching_sheet(sheet_req, sheets, sheet_range, [room_id], True)
 
 
-def randomize_underworld_sprite_sheets(sheets, data_tables, custom_enemies):
-    setup_required_dungeon_groups(sheets, data_tables)
+def randomize_underworld_sprite_sheets(sheets, data_tables, custom_enemies, limited_run=None):
+    setup_required_dungeon_groups(sheets, data_tables, limited_run)
 
     setup_custom_enemy_sheets(custom_enemies, sheets, data_tables, range(65, 124), True)
 

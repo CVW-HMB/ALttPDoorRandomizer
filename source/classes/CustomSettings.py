@@ -58,6 +58,7 @@ class CustomSettings(object):
         return meta['players']
 
     def adjust_args(self, args, resolve_weighted=True):
+        from source.limited.LimitedRunCoordinator import get_limited_run_args
         def get_setting(value: Any, default):
             if value or value == 0:
                 if isinstance(value, dict):
@@ -67,7 +68,7 @@ class CustomSettings(object):
                 else:
                     return value
             return default
-        if 'meta' in self.file_source:
+        if 'meta' in self.file_source and self.file_source['meta']:
             meta = defaultdict(lambda: None, self.file_source['meta'])
             args.multi = get_setting(meta['players'], args.multi)
             args.algorithm = get_setting(meta['algorithm'], args.algorithm)
@@ -80,9 +81,12 @@ class CustomSettings(object):
             args.race = get_setting(meta['race'], args.race)
             args.notes = get_setting(meta['user_notes'], args.notes)
         self.player_range = range(1, args.multi + 1)
-        if 'settings' in self.file_source:
+        if 'settings' in self.file_source and self.file_source['settings']:
             for p in self.player_range:
-                player_setting = self.file_source['settings'][p]
+                if p in self.file_source['settings']:
+                    player_setting = self.file_source['settings'][p]
+                else:
+                    player_setting = self.file_source['settings']
                 if isinstance(player_setting, str):
                     weights = get_weights(os.path.join(self.relative_dir, player_setting))
                     settings = defaultdict(lambda: None, vars(roll_settings(weights)))
@@ -174,7 +178,7 @@ class CustomSettings(object):
                     args.compassshuffle[p] = dungeon_item_map[args.compassshuffle[p]]
                 if args.bigkeyshuffle[p] in dungeon_item_map:
                     args.bigkeyshuffle[p] = dungeon_item_map[args.bigkeyshuffle[p]]
-                
+
                 if get_setting(settings['keysanity'], args.keysanity):
                     if args.bigkeyshuffle[p] in ['none', 0]:
                         args.bigkeyshuffle[p] = 'wild'
@@ -211,6 +215,8 @@ class CustomSettings(object):
                 args.beemizer[p] = get_setting(settings['beemizer'], args.beemizer[p])
                 args.aga_randomness[p] = get_setting(settings['aga_randomness'], args.aga_randomness[p])
                 args.money_balance[p] = get_setting(settings['money_balance'], args.money_balance[p])
+                args.limited_run[p] = get_setting(settings['limited_run'], args.limited_run[p])
+                args.limited_run_args[p] = get_limited_run_args(get_setting(settings['limited_run_args'], args.limited_run_args[p]))
 
                 # mystery usage
                 args.usestartinventory[p] = get_setting(settings['usestartinventory'], args.usestartinventory[p])
@@ -303,6 +309,19 @@ class CustomSettings(object):
             return self.file_source['doors']
         return None
 
+    def get_rooms(self):
+        if 'rooms' in self.file_source:
+            return self.file_source['rooms']
+        return None
+
+    def get_custom_rooms(self, player):
+        # these are optionally player specific for now
+        if self.get_rooms():
+            if player in self.get_rooms():
+                return self.get_rooms()[player]
+            else:
+                return self.get_rooms()
+
     def get_bosses(self):
         if 'bosses' in self.file_source:
             return self.file_source['bosses']
@@ -323,14 +342,43 @@ class CustomSettings(object):
             return self.file_source['drops']
         return None
 
+    def get_sprite_sheets(self):
+        if 'sprite_sheets' in self.file_source:
+            return self.file_source['sprite_sheets']
+        return None
+
     def get_enemies(self):
         if 'enemies' in self.file_source:
             return self.file_source['enemies']
         return None
-    
+
     def get_goals(self):
         if 'goals' in self.file_source:
             return self.file_source['goals']
+        return None
+
+    def get_text(self):
+        if 'text' in self.file_source:
+            return self.file_source['text']
+        return None
+
+    def get_telepathic_tiles(self):
+        if 'text' in self.file_source:
+            return self.file_source['telepathic_tiles']
+        return None
+
+    def get_sprites(self):
+        if 'sprites' in self.file_source:
+            return self.file_source['sprites']
+        return None
+
+    def get_custom_sprites(self, player):
+        # these are optionally player specific for now
+        if self.get_sprites():
+            if player in self.get_sprites():
+                return self.get_sprites()[player]
+            else:
+                return self.get_sprites()
         return None
 
 
