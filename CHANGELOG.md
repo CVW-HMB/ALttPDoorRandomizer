@@ -1,9 +1,6 @@
 # Changelog
 
-# 0.7.1.2
-- 2026 Easter Festive Fixes
-
-# 0.7.1.1
+# 0.7.1.1 / 0.7.1.2 / 0.7.1.3
 - 2026 Easter Festive Fixes
 
 # 0.7.1.0
