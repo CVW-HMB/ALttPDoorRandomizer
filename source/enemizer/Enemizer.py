@@ -337,7 +337,12 @@ def randomize_underworld_rooms(data_tables, world, player, custom_uw):
                 wallmaster_chosen = room_id in {0x0039, 0x0049, 0x0056, 0x0057, 0x0068, 0x0087, 0x008d}
                 for i, sprite in randomizeable_sprites.items():
                     if room_id in custom_uw and i in custom_uw[room_id]:
-                        sprite.kind = sprite_translation[custom_uw[room_id][i]]
+                        desired_sprite = sprite_translation[custom_uw[room_id][i]]
+                        denied = denied_sprite(desired_sprite, room_id, i, data_tables.uw_enemy_denials)
+                        if enemy_drops_active:
+                            denied = denied or denied_sprite(desired_sprite, room_id, i, data_tables.uw_enemy_drop_denials)
+                        if not denied:
+                            sprite.kind = desired_sprite
                     else:
                         # filter out water if necessary
                         candidate_sprites = [x for x in candidate_sprites if not x.water_only or sprite.water]
@@ -391,12 +396,18 @@ def filter_choices(options, room_id, sprite_idx, denials):
     return [x for x in options if key not in denials or x.sprite not in denials[key]]
 
 
+def denied_sprite(sprite, room_id, sprite_idx, denials):
+    key = room_id, sprite_idx
+    return key in denials and sprite in denials[key]
+
+
 def filter_water_phobic(options, sprite):
     return [x for x in options if not x.water_phobic or not sprite.water]
 
 
 def randomize_overworld_enemies(data_tables, custom_ow):
     ow_candidates, ow_sheets, all_sheets = find_candidate_sprites(data_tables, range(1, 64), False)
+    enemy_drops_active = False
     areas_to_randomize = [0, 2, 3, 5, 7, 0xA, 0xF, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
                           0x1a, 0x1b, 0x1d, 0x1e, 0x22, 0x25, 0x28, 0x29, 0x2A, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
                           0x30, 0x32, 0x33, 0x34, 0x35, 0x37, 0x3a, 0x3b, 0x3c, 0x3f]
@@ -416,9 +427,16 @@ def randomize_overworld_enemies(data_tables, custom_ow):
             candidate_sprites = get_possible_enemy_sprites_ow(chosen_sheet, ow_candidates, data_tables)
             for i, sprite in randomizeable_sprites.items():
                 if area_id in custom_ow and i in custom_ow[area_id]:
-                    sprite.kind = sprite_translation[custom_ow[area_id][i]]
+                    desired_sprite = sprite_translation[custom_ow[area_id][i]]
+                    denied = denied_sprite(desired_sprite, area_id, i, data_tables.ow_enemy_denials)
+                    if enemy_drops_active and hasattr(data_tables, 'ow_enemy_drop_denials'):
+                        denied = denied or denied_sprite(desired_sprite, area_id, i, data_tables.ow_enemy_drop_denials)
+                    if not denied:
+                        sprite.kind = desired_sprite
                 else:
                     candidate_sprites = filter_choices(candidate_sprites, area_id, i, data_tables.ow_enemy_denials)
+                    if enemy_drops_active and hasattr(data_tables, 'ow_enemy_drop_denials'):
+                        candidate_sprites = filter_choices(candidate_sprites, area_id, i, data_tables.ow_enemy_drop_denials)
                     candidate_sprites = filter_water_phobic(candidate_sprites, sprite)
                     weight = [data_tables.ow_weights[r.sprite] for r in candidate_sprites]
                     chosen = random.choices(candidate_sprites, weight, k=1)[0]
