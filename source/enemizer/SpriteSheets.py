@@ -724,10 +724,10 @@ def randomize_underworld_sprite_sheets(sheets, data_tables, custom_enemies, limi
 
 
 def setup_required_overworld_groups(sheets):
-    sheets[7].add_sprite_to_sheet([None, None, 74, None], {0x2})  # lumberjacks
-    sheets[16].add_sprite_to_sheet([None, None, 18, 16], {0x3, 0x93})  # WDM (pre/post-Aga)
-    sheets[7].add_sprite_to_sheet([None, None, None, 17], {0xA, 0x9A})  # DM Foothills? (pre/post-Aga)
-    sheets[4].add_sprite_to_sheet([None, None, None, None], {0xF, 0x9F})  # Waterfall of wishing (pre/post-Aga)
+    sheets[7].add_sprite_to_sheet([None, None, 74, None], {0x02})  # lumberjacks
+    sheets[16].add_sprite_to_sheet([None, None, 18, 16], {0x03, 0x93})  # WDM (pre/post-Aga)
+    sheets[7].add_sprite_to_sheet([None, None, None, 17], {0x0A, 0x9A})  # DM Foothills Rock Hoarder (pre/post-Aga)
+    sheets[4].add_sprite_to_sheet([None, None, None, None], {0x0F, 0x9F})  # Waterfall of wishing (pre/post-Aga)
     sheets[3].add_sprite_to_sheet([None, None, None, 14], {0x14, 0xA4})  # Graveyard (pre/post-Aga)
     sheets[1].add_sprite_to_sheet([None, None, 76, 0x3F], {0x1B, 0xAB})  # Hyrule Castle (pre/post-Aga)
     ## group 0 set to 0x48 for tutortial guards
@@ -806,10 +806,35 @@ def find_matching_sheet(groups, sheets, search_sheets, room_list=None, lock_matc
         chosen_sheet.add_sprite_to_sheet(chosen_groups, room_list)
 
 
+def setup_force_enemy_overworld_sheet_preferences(sheets, data_tables, force_enemy):
+    if not force_enemy:
+        return
+
+    key = (sprite_translation[force_enemy], 0)
+    if key not in data_tables.sprite_requirements:
+        return
+
+    req = data_tables.sprite_requirements[key]
+    if isinstance(req, dict):
+        return
+
+    for num in range(1, 64):
+        if num == 6:  # skip this group - it is locked for kakariko
+            continue
+
+        sheet = sheets[num]
+        for idx in range(0, 4):
+            if sheet.locked[idx] or not req.sub_groups[idx]:
+                continue
+            sheet.sub_groups[idx] = random.choice(req.sub_groups[idx])
+            sheet.locked[idx] = True
+
+
 def randomize_overworld_sprite_sheets(sheets, data_tables, custom_enemies):
     setup_required_overworld_groups(sheets)
 
     setup_custom_enemy_sheets(custom_enemies, sheets, data_tables, range(1, 64), False)
+    setup_force_enemy_overworld_sheet_preferences(sheets, data_tables, False)
 
     for num in range(1, 64):  # sheets 0x1 to 0x3F inclusive
         sheet = sheets[num]

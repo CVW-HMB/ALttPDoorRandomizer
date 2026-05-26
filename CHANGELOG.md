@@ -1,5 +1,11 @@
 # Changelog
 
+# 0.7.1.4
+- 2026 Easter Festive Fixes
+- Fixed forced_enemy option to abide enemy denials
+- Fixed logic issue with EDM Mirror Clip
+- Fixed broken extra crowd control features (actual CC was fine)
+
 # 0.7.1.1 / 0.7.1.2 / 0.7.1.3
 - 2026 Easter Festive Fixes
 
