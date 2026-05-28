@@ -342,8 +342,18 @@ def randomize_underworld_rooms(data_tables, world, player, custom_uw):
                         drop_denials = data_tables.uw_enemy_drop_denials if enemy_drops_active else None
                         if is_custom_sprite_allowed(desired_sprite, room_id, i, data_tables,
                                                     data_tables.uw_enemy_denials, drop_denials, enemy_drops_active):
-                            sprite.kind = desired_sprite
-                            use_custom = True
+                            if sprite.drops_item:
+                                # Key drop slot: forced enemy must be capable of dropping the key
+                                req_key = (desired_sprite, 0)
+                                req = data_tables.sprite_requirements.get(req_key)
+                                forbidden = determine_forbidden(any_enemy_logic == 'none', room_id, True)
+                                if req is not None and not isinstance(req, dict) and req.good_for_key_drop(forbidden):
+                                    sprite.kind = desired_sprite
+                                    use_custom = True
+                                # else: use_custom stays False; random selection enforces good_for_key_drop
+                            else:
+                                sprite.kind = desired_sprite
+                                use_custom = True
                     if not use_custom:
                         # filter out water if necessary
                         candidate_sprites = [x for x in candidate_sprites if not x.water_only or sprite.water]
