@@ -1100,8 +1100,28 @@ def balance_money_progression(world):
                 path = path[1]
         return False
 
+    def is_movable_rupee_location(loc, player):
+        """Rupee packs that may be swapped into earlier free spots."""
+        if not loc.item or loc.locked or loc.event:
+            return False
+        if loc.item.player != player:
+            return False
+        # Singular 1-rupee green packs are poor swap sources and often ignored for wallet credit.
+        return loc.item.name in rupee_chart and loc.item.name != 'Rupee (1)'
+
+    def is_balance_candidate(loc, max_value):
+        if not loc.item or loc.locked or loc.event:
+            return False
+        value = rupee_chart[loc.item.name] if loc.item.name in rupee_chart else 0
+        return value < max_value
+
     done = False
-    attempts = world.players * 20 + 20
+    # Must cover a full playthrough sphere walk (can exceed a few dozen spheres with
+    # keysanity / large location sets). The old players*20+20 cap falsely aborted
+    # legitimate long walks as "infinite loops".
+    attempts = max(200, len(unchecked_locations) + world.players * 50)
+    stagnant_rounds = 0
+    prev_unchecked = len(unchecked_locations)
     while not done:
         attempts -= 1
         if attempts < 0:
@@ -1111,6 +1131,7 @@ def balance_money_progression(world):
         locked_by_money = {player: set() for player in range(1, world.players+1)}
         sphere_locations = get_sphere_locations(state, unchecked_locations)
         checked_locations = []
+        progress_this_round = False
         for player in range(1, world.players+1):
             kiki_payable = state.prog_items[('Moon Pearl', player)] > 0 or world.is_tile_swapped(0x1e, player)
             if kiki_payable and world.get_region('Palace of Darkness Area', player) in state.reachable_regions[player]:
@@ -1126,7 +1147,7 @@ def balance_money_progression(world):
                 shop_item = shop.inventory[slot]
                 if shop_item and location.item and interesting_item(location, location.item, world, location.item.player):
                     if location.item.name.startswith('Rupee') and loc_player == location.item.player:
-                        if shop_item['price'] < rupee_chart[location.item.name]:
+                        if location.item.name in rupee_chart and shop_item['price'] < rupee_chart[location.item.name]:
                             wallet[loc_player] -= shop_item['price']  # will get picked up in the location_free block
                         else:
                             location_free = False
@@ -1144,6 +1165,7 @@ def balance_money_progression(world):
             if location_free and location.item:
                 state.collect(location.item, True, location)
                 unchecked_locations.remove(location)
+                progress_this_round = True
                 if location.item:
                     if location.item.name.startswith('Rupee'):
                         if not (location.item.name == 'Rupee (1)' and world.algorithm != 'district'):
@@ -1154,17 +1176,24 @@ def balance_money_progression(world):
                         checked_locations.append(location)
                     elif location.item.name in acceptable_balancers:
                         balance_locations[location.item.player].add(location)
+                    else:
+                        # Non-interesting free loot still counts as sphere progress so we
+                        # don't fall into the money-balancing branch incorrectly.
+                        checked_locations.append(location)
         for room, income in rupee_rooms.items():
             for player in range(1, world.players+1):
                 if room not in rooms_visited[player] and world.get_region(room, player) in state.reachable_regions[player]:
                     wallet[player] += income
                     rooms_visited[player].add(room)
         if checked_locations or len(unchecked_locations) == 0:
+            stagnant_rounds = 0
+            prev_unchecked = len(unchecked_locations)
             if world.has_beaten_game(state):
                 done = True
                 continue
             # else go to next sphere
         else:
+            # No reachable progress without spending money (or softlocked path).
             # check for solvent players
             solvent = set()
             insolvent = set()
@@ -1174,6 +1203,12 @@ def balance_money_progression(world):
                     solvent.add(player)
                 if sphere_costs[player] > 0 and sphere_costs[player] * modifier > wallet[player]:
                     insolvent.add(player)
+
+            # Nothing reachable and nothing money-gated: cannot progress via balancing.
+            if not sphere_locations and not any(locked_by_money.values()):
+                logger.warning('Money balancing stuck with no reachable locations; continuing without further swaps')
+                break
+
             if len([p for p in solvent if len(locked_by_money[p]) > 0]) == 0:
                 if len(insolvent) > 0:
                     target_player = min(insolvent, key=lambda p: sphere_costs[p]-wallet[p])
@@ -1183,16 +1218,30 @@ def balance_money_progression(world):
                 else:
                     difference = 0
                     target_player = next(p for p in solvent)
+
                 while difference > 0:
-                    swap_targets = [x for x in unchecked_locations if x not in sphere_locations and x.item.name.startswith('Rupees') and x.item.player == target_player]
+                    # Any uncollected movable rupee pack is a valid source — including those
+                    # already in the current sphere but money-locked (e.g. expensive shop slots).
+                    # Previously those were excluded with `x not in sphere_locations`, which made
+                    # the algorithm invent brand-new Rupees (300) while real packs sat unused.
+                    swap_targets = [x for x in unchecked_locations if is_movable_rupee_location(x, target_player)]
                     if len(swap_targets) == 0:
+                        # No uncollected packs left to relocate.
+                        # Prefer farming; only mint a single 300 as absolute last resort.
                         best_swap, best_value = None, 300
                     else:
-                        best_swap = max(swap_targets, key=lambda t: rupee_chart[t.item.name])
+                        # Prefer a pack large enough to cover the shortfall; else largest available.
+                        covering = [t for t in swap_targets if rupee_chart[t.item.name] >= difference]
+                        best_swap = min(covering, key=lambda t: rupee_chart[t.item.name]) if covering \
+                            else max(swap_targets, key=lambda t: rupee_chart[t.item.name])
                         best_value = rupee_chart[best_swap.item.name]
-                    increase_targets = [x for x in balance_locations[target_player] if x.item.name in rupee_chart and rupee_chart[x.item.name] < best_value]
+
+                    increase_targets = [x for x in balance_locations[target_player] if is_balance_candidate(x, best_value)]
                     if len(increase_targets) == 0:
-                        increase_targets = [x for x in balance_locations[target_player] if (rupee_chart[x.item.name] if x.item.name in rupee_chart else 0) < best_value]
+                        # Fallback: any early balancer/rupee worth less than the incoming pack.
+                        increase_targets = [x for x in balance_locations[target_player]
+                                            if is_balance_candidate(x, best_value + 1) or
+                                            (x.item and x.item.name in acceptable_balancers)]
                     if len(increase_targets) == 0:
                         if state.can_farm_rupees(target_player):
                             logger.warning(f'No more swap targets available. Short by {difference} rupees, but continuing (player can farm)')
@@ -1202,11 +1251,16 @@ def balance_money_progression(world):
                     best_target = min(increase_targets, key=lambda t: rupee_chart[t.item.name] if t.item.name in rupee_chart else 0)
                     make_item_free = wallet[target_player] < 20
                     old_value = 0 if make_item_free else (rupee_chart[best_target.item.name] if best_target.item.name in rupee_chart else 0)
+
                     if best_swap is None:
-                        logger.debug(f'Upgrading {best_target.item.name} @ {best_target.name} for 300 Rupees')
+                        if state.can_farm_rupees(target_player):
+                            logger.warning(f'No rupee packs left to swap. Short by {difference}; relying on farm instead of inventing Rupees (300)')
+                            break
+                        logger.debug(f'Upgrading {best_target.item.name} @ {best_target.name} for 300 Rupees (short {difference})')
                         best_target.item = ItemFactory('Rupees (300)', best_target.item.player)
                         best_target.item.location = best_target
                         check_shop_swap(best_target.item.location, make_item_free)
+                        balance_locations[target_player].discard(best_target)  # Don't keep using a minted 300 as a further upgrade base.
                     else:
                         old_item = best_target.item
                         logger.debug(f'Swapping {best_target.item.name} @ {best_target.name} for {best_swap.item.name} @ {best_swap.name}')
@@ -1216,7 +1270,17 @@ def balance_money_progression(world):
                         best_swap.item.location = best_swap
                         check_shop_swap(best_target.item.location, make_item_free)
                         check_shop_swap(best_swap.item.location)
+
                     increase = best_value - old_value
+                    if increase <= 0:
+                        # Avoid infinite loops if a candidate cannot actually help.
+                        balance_locations[target_player].discard(best_target)
+                        if not balance_locations[target_player]:
+                            if state.can_farm_rupees(target_player):
+                                logger.warning(f'Unable to increase early money further. Short by {difference}; continuing (player can farm)')
+                                break
+                            raise Exception(f'No early sphere swaps for rupees - money grind would be required - bailing for now')
+                        continue
                     difference -= increase
                     wallet[target_player] += increase
                 solvent.add(target_player)
@@ -1227,11 +1291,22 @@ def balance_money_progression(world):
                 for location in locked_by_money[player]:
                     if isinstance(location, str) and location == 'Kiki':
                         kiki_paid[player] = True
-                    else:
+                        progress_this_round = True
+                    elif location in unchecked_locations:
                         state.collect(location.item, True, location)
                         unchecked_locations.remove(location)
-                        if location.item and location.item.name.startswith('Rupee'):
+                        progress_this_round = True
+                        if location.item and location.item.name in rupee_chart:
                             wallet[location.item.player] += rupee_chart[location.item.name]
+
+            if len(unchecked_locations) >= prev_unchecked and not progress_this_round:
+                stagnant_rounds += 1
+            else:
+                stagnant_rounds = 0
+            prev_unchecked = len(unchecked_locations)
+            if stagnant_rounds >= 3:
+                logger.warning('Money balancing made no progress for multiple rounds; continuing')
+                break
 
 def set_prize_drops(world, player):
     prizes = [0xD8, 0xD8, 0xD8, 0xD8, 0xD9, 0xD8, 0xD8, 0xD9,
