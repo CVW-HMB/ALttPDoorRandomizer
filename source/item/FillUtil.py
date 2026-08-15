@@ -302,12 +302,22 @@ def massage_item_pool(world):
         player_pool[item.player].append(item)
     for dungeon in world.dungeons:
         for item in dungeon.all_items:
-            if item.is_inside_dungeon_item(world):
+            if item.is_inside_dungeon_item(world) or item.is_near_dungeon_item(world):
                 player_pool[item.player].append(item)
+    # Dungeon/nearby prizes are not on dungeon objects or in itempool yet
+    unpooled_prizes = defaultdict(int)
+    for player in range(1, world.players + 1):
+        if world.prizeshuffle[player] in ['dungeon', 'nearby']:
+            unpooled_prizes[player] = sum(
+                1 for dungeon in world.dungeons
+                if dungeon.player == player and dungeon_table[dungeon.name].prize
+            )
+            if unpooled_prizes[player] and player not in player_pool:
+                player_pool[player] = []
     player_locations = defaultdict(list)
     for player in player_pool:
         player_locations[player] = [x for x in world.get_unfilled_locations(player) if not x.prize]
-        discrepancy = len(player_pool[player]) - len(player_locations[player])
+        discrepancy = (len(player_pool[player]) + unpooled_prizes[player]) - len(player_locations[player])
         if discrepancy:
             trash_options = [x for x in player_pool[player] if x.name in trash_items]
             random.shuffle(trash_options)
