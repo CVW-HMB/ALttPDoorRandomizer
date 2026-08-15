@@ -1789,7 +1789,7 @@ class Entrance(object):
             if follower_region.type not in [RegionType.LightWorld, RegionType.DarkWorld]:
                 ent_list = [e for e in start_region.entrances if e.parent_region.type != RegionType.Menu]
                 follower_region = ent_list[0].parent_region
-            if (follower_region.world.mode[self.player] != 'inverted') == (follower_region.type == RegionType.LightWorld):
+            elif (follower_region.world.mode[self.player] != 'inverted') == (follower_region.type == RegionType.LightWorld):
                 from OverworldShuffle import get_mirror_edges
                 mirror_map = get_mirror_edges(follower_region.world, follower_region, self.player)
                 while len(mirror_map) and not found:
@@ -1844,11 +1844,18 @@ class Entrance(object):
             if follower_region.type not in [RegionType.LightWorld, RegionType.DarkWorld]:
                 ent_list = [e for e in start_region.entrances if e.parent_region.type != RegionType.Menu]
                 follower_region = ent_list[0].parent_region
-            if (follower_region.world.mode[self.player] != 'inverted') == (follower_region.type == RegionType.LightWorld):
+            elif (follower_region.world.mode[self.player] != 'inverted') == (follower_region.type == RegionType.LightWorld):
                 dest_region = self.parent_region
                 if dest_region.type not in [RegionType.LightWorld, RegionType.DarkWorld]:
-                    dest_region = dest_region.entrances[0].parent_region
-                if (dest_region.world.mode[self.player] != 'inverted') != (dest_region.type == RegionType.LightWorld):
+                    if self.name == 'Revealing Light':
+                        # Maiden dest is inside TT (single lobby). Mirror portals belong
+                        # on the OW region leading into TT lobby, not an interior room.
+                        portal = dest_region.world.get_portal_unsafe('Thieves Town', self.player)
+                        ow_ent = portal.find_portal_entrance() if portal else None
+                        dest_region = ow_ent.parent_region if ow_ent else None
+                    else:
+                        dest_region = dest_region.entrances[0].parent_region if dest_region.entrances else None
+                elif (dest_region.world.mode[self.player] != 'inverted') != (dest_region.type == RegionType.LightWorld):
                     # loop thru potential places to leave a mirror portal
                     from OverworldShuffle import get_mirror_edges
                     mirror_map = get_mirror_edges(dest_region.world, dest_region, self.player)
@@ -1873,6 +1880,9 @@ class Entrance(object):
                                 traverse_paths(follower_region, mirror_exit.connected_region)
                                 state.collect(mirror_item, True)
                         mirror_map.pop(0)
+                    if found and self.name == 'Revealing Light' and dest_region != self.parent_region:
+                        found = False
+                        traverse_paths(dest_region, self.parent_region)
                     if found:
                         path = state.path.get(self.parent_region, (self.parent_region.name, None))
                         path = (mirror_exit.name, path)

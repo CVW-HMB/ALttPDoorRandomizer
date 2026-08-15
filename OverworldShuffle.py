@@ -1170,6 +1170,8 @@ def get_mirror_edges(world, region, player):
                 mirror_exits.append(tuple([get_mirror_exit_name(region.name, dest_region_name), dest_region_name]))
     else:
         # get mirror edges leading into the region
+        if region.name not in OWTileRegions:
+            return mirror_exits
         owid = OWTileRegions[region.name]
         for other_world_region_name in OWTileRegions.inverse[(owid + 0x40) % 0x80]:
             if other_world_region_name in mirror_connections:
