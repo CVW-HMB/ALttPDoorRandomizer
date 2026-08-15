@@ -518,12 +518,16 @@ def generate_itempool(world, player):
     pool_size += sum(1 for x in world.itempool if x.player == player)
 
     if pool_size < ttl_locations:
-        retro_bow = world.bow_mode[player].startswith('retro')
         amount_to_add = ttl_locations - pool_size
-        filler_additions = random.choices(list(filler_items.keys()), filler_items.values(), k=amount_to_add)
-        for item in filler_additions:
-            item_name = 'Rupees (5)' if retro_bow and item == 'Arrows (10)' else item
-            world.itempool.append(ItemFactory(item_name, player))
+        if skip_pool_adjustments:
+            # Custom item_pool is exact: pad location shortfalls with Nothing, not junk.
+            world.itempool.extend(ItemFactory(['Nothing'] * amount_to_add, player))
+        else:
+            retro_bow = world.bow_mode[player].startswith('retro')
+            filler_additions = random.choices(list(filler_items.keys()), filler_items.values(), k=amount_to_add)
+            for item in filler_additions:
+                item_name = 'Rupees (5)' if retro_bow and item == 'Arrows (10)' else item
+                world.itempool.append(ItemFactory(item_name, player))
 
 
 
