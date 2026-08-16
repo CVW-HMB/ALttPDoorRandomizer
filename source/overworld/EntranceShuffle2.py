@@ -1513,10 +1513,10 @@ def do_vanilla_connect(pool_def, avail):
     defaults = {**default_connections, **(inverted_default_connections if avail.inverted != avail.world.is_tile_swapped(0x1b, avail.player) else open_default_connections)}
     for entrance in pool_def['entrances']:
         if entrance in avail.entrances:
-            target = defaults[entrance]
             if entrance in avail.default_map:
                 connect_vanilla_two_way(entrance, avail.default_map[entrance], avail)
             else:
+                target = defaults[entrance]
                 connect_simple(avail.world, entrance, target, avail.player)
                 avail.entrances.remove(entrance)
                 avail.exits.remove(target)
