@@ -651,6 +651,9 @@ def do_dark_sanc(entrances, exits, avail):
                 entrances.remove(swap_ent)
                 exits.remove(swap_ext)
         elif not ext.connected_region:
+            # do_main_shuffle is per-pool; the cave may still belong to a later pool
+            if 'Dark Sanctuary Hint' in avail.exits:
+                return
             raise Exception('Dark Sanctuary Hint was placed earlier but its exit not properly connected')
 
 
@@ -1520,6 +1523,10 @@ def do_vanilla_connect(pool_def, avail):
                 connect_simple(avail.world, entrance, target, avail.player)
                 avail.entrances.remove(entrance)
                 avail.exits.remove(target)
+                # Dark Sanctuary Hint is one-way; connect the spawn exit like do_vanilla_connections
+                if entrance == 'Dark Sanctuary Hint' and avail.world.is_dark_chapel_start(avail.player):
+                    ext = avail.world.get_entrance('Dark Sanctuary Hint Exit', avail.player)
+                    ext.connect(avail.world.get_region('Dark Chapel Area', avail.player))
 
 def bonk_fairy_exception(avail, x):  # (Bonk Fairy not eligible in standard)
     return not avail.is_standard() or x != 'Bonk Fairy (Light)'
