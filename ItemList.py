@@ -803,7 +803,11 @@ def fill_prizes(world, attempts=15):
             except FillError as e:
                 logging.getLogger('').info("Failed to place dungeon prizes (%s). Will retry %s more times", e, attempts - attempt - 1)
                 for location in empty_crystal_locations:
+                    if location.item:
+                        location.item.location = None
+                        location.item.dungeon_object = None
                     location.item = None
+                    location.event = False
                 continue
             break
         else:

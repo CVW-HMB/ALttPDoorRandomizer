@@ -10,14 +10,32 @@ from BaseClasses import CollectionState, FillError, LocationType
 from Items import ItemFactory
 from Regions import shop_to_location_table, retro_shops
 from source.item.FillUtil import filter_locations, classify_major_items, replace_trash_item, vanilla_fallback
-from source.item.FillUtil import filter_special_locations, valid_pot_items
+from source.item.FillUtil import filter_special_locations, valid_pot_items, assign_vanilla_prize_dungeons
 
 
 def get_dungeon_item_pool(world):
-    dungeon_items = [item for dungeon in world.dungeons for item in dungeon.all_items if item.location is None]
+    def get_prize_names(player):
+        names = set()
+        for item in world.itempool:
+            if item.prize and item.player == player:
+                names.add(item.name)
+        for loc in world.get_filled_locations(player):
+            if loc.item and loc.item.prize:
+                names.add(loc.item.name)
+        for dungeon in world.dungeons:
+            if dungeon.player == player and dungeon.prize:
+                names.add(dungeon.prize.name)
+        return names
+
+    dungeon_items = [item for dungeon in world.dungeons for item in dungeon.all_items
+                     if item.location is None and item not in world.itempool]
+    from Items import prize_item_table
     for player in range(1, world.players+1):
         if world.prizeshuffle[player] != 'none':
-            dungeon_items.extend(ItemFactory(['Red Pendant', 'Blue Pendant', 'Green Pendant', 'Crystal 1', 'Crystal 2', 'Crystal 3', 'Crystal 4', 'Crystal 7', 'Crystal 5', 'Crystal 6'], player))
+            present = get_prize_names(player)
+            missing = [name for name in prize_item_table if name not in present]
+            if missing:
+                dungeon_items.extend(ItemFactory(missing, player))
 
     return dungeon_items
 
@@ -97,6 +115,7 @@ def fill_dungeons_restrictive(world, shuffled_locations):
             hybrid_smalls = [ItemFactory('Small Key (Swamp Palace)', player)] * 2
             fill(hybrid_state_base, hybrid_smalls, hybrid_locations, unplaced_smalls)
 
+    bigs_copy, smalls_copy = list(bigs), list(smalls)
     big_state_base = all_state_base.copy()
     for x in smalls + prizes + others:
         big_state_base.collect(x, True)
@@ -108,48 +127,57 @@ def fill_dungeons_restrictive(world, shuffled_locations):
     fill(small_state_base, smalls, shuffled_locations, unplaced_smalls)
 
     prizes_copy = prizes.copy()
+    placed_keys = bigs_copy + smalls_copy
+    layout_snapshot = {}
+    for dungeon in world.dungeons:
+        layout = world.dungeon_layouts[dungeon.player][dungeon.name]
+        layout_snapshot[dungeon] = (layout.dungeon_items, layout.free_items)
+
     for attempt in range(15):
         try:
             for player in range(1, world.players + 1):
-                if world.prizeshuffle[player] == 'nearby' and world.algorithm != 'vanilla_fill':
+                if world.algorithm == 'vanilla_fill':
+                    assign_vanilla_prize_dungeons(world, player, prizes)
+                elif world.prizeshuffle[player] == 'nearby':
                     dungeon_pool = []
                     for dungeon in world.dungeons:
                         from Dungeons import dungeon_table
-                        if dungeon.player == player and dungeon_table[dungeon.name].prize:
+                        if dungeon.player == player and dungeon_table[dungeon.name].prize and not dungeon.prize:
                             dungeon_pool.append(dungeon)
                     random.shuffle(dungeon_pool)
                     for item in prizes:
-                        if item.player == player:
+                        if item.player == player and dungeon_pool:
                             dungeon = dungeon_pool.pop()
                             dungeon.prize = item
                             item.dungeon_object = dungeon
             random.shuffle(prizes)
             random.shuffle(shuffled_locations)
-            prize_state_base = all_state_base.copy()
-            for x in others:
+            # Match fill_prizes: assume keys and other dungeon items are available
+            prize_state_base = world.get_all_state(keys=True)
+            for x in placed_keys + others:
                 prize_state_base.collect(x, True)
             fill(prize_state_base, prizes, shuffled_locations)
         except FillError as e:
             logging.getLogger('').info("Failed to place dungeon prizes (%s). Will retry %s more times", e, 14 - attempt)
             prizes = prizes_copy.copy()
             for dungeon in world.dungeons:
-                dungeon.prize = None
+                if dungeon.prize in prizes:
+                    dungeon.prize = None
+                layout = world.dungeon_layouts[dungeon.player][dungeon.name]
+                layout.dungeon_items, layout.free_items = layout_snapshot[dungeon]
             for prize in prizes:
-                if prize.location:
-                    prize.location.item = None
+                loc = prize.location
+                if loc:
+                    loc.item = None
+                    loc.event = False
+                    if shuffled_locations is not None and loc not in shuffled_locations:
+                        shuffled_locations.append(loc)
                     prize.location = None
+                prize.dungeon_object = None
             continue
         break
     else:
         raise FillError(f'Unable to place dungeon prizes: {", ".join(list(map(lambda d: d.name, prizes)))}')
-
-    if world.algorithm == 'vanilla_fill':
-        for prize in prizes_copy:
-            if prize.is_near_dungeon_item(world):
-                if prize.location and prize.location.parent_region.dungeon:
-                    dungeon = prize.location.parent_region.dungeon
-                    dungeon.prize = prize
-                    prize.dungeon_object = dungeon
 
     random.shuffle(shuffled_locations)
     fill(all_state_base, others, shuffled_locations)
@@ -242,8 +270,7 @@ def verify_spot_to_fill(location, item_to_place, max_exp_state, single_player_pl
         test_state.sweep_for_events()
         if location.can_fill(test_state, item_to_place, perform_access_check):
             if valid_key_placement(item_to_place, location, key_pool, test_state, world):
-                if (item_to_place.prize and (world.prizeshuffle[item_to_place.player] == 'none' \
-                        or (world.algorithm == 'vanilla_fill' and item_to_place.is_near_dungeon_item(world)))) \
+                if (item_to_place.prize and world.prizeshuffle[item_to_place.player] == 'none') \
                         or valid_dungeon_placement(item_to_place, location, world):
                     return location
     if item_to_place.smallkey or item_to_place.bigkey or item_to_place.prize:
@@ -292,6 +319,10 @@ def valid_key_placement(item, location, key_pool, collection_state, world):
 
 
 def valid_reserved_placement(item, location, world):
+    # Prize items have their own pool/dungeon constraints. Reserving major
+    # locations (including "X - Prize") must not block on-boss or in-dungeon prizes.
+    if item.prize:
+        return True
     if item.player == location.player and item.is_inside_dungeon_item(world):
         return location.name not in world.item_pool_config.reserved_locations[location.player]
     return True
@@ -310,7 +341,9 @@ def valid_dungeon_placement(item, location, world):
                 return item.dungeon_object == dungeon and layout.free_items > 0
             return layout.free_items > 0
         elif item.prize:
-            return not dungeon.prize and layout.dungeon_items > 0
+            if item.dungeon_object:
+                return dungeon is item.dungeon_object and layout.dungeon_items > 0
+            return (not dungeon.prize or dungeon.prize is item) and layout.dungeon_items > 0
         else:
             # the second half probably doesn't matter much - should always return true
             return item.dungeon == dungeon.name and layout.dungeon_items > 0
@@ -337,12 +370,10 @@ def track_dungeon_items(item, location, world):
         else:
             layout.free_items -= 1
         if item.prize:
-            location.parent_region.dungeon.prize = item
-            item.dungeon_object = location.parent_region.dungeon
-    elif world.algorithm == 'vanilla_fill' and item.prize and location.parent_region.dungeon:
-        dungeon = location.parent_region.dungeon
-        dungeon.prize = item
-        item.dungeon_object = dungeon
+            placed_dungeon = location.parent_region.dungeon
+            if not item.dungeon_object or item.dungeon_object is placed_dungeon:
+                placed_dungeon.prize = item
+                item.dungeon_object = placed_dungeon
 
 
 def is_dungeon_item(item, world):
@@ -360,14 +391,14 @@ def recovery_placement(item_to_place, locations, world, state, base_state, itemp
         return last_ditch_placement(item_to_place, locations, world, state, base_state, itempool, key_pool,
                                     single_player_placement)
     elif world.algorithm == 'vanilla_fill':
-        if item_to_place.prize:
+        if item_to_place.prize and world.prizeshuffle[item_to_place.player] == 'none':
             possible_swaps = [x for x in state.locations_checked if x.item.prize]
             return try_possible_swaps(possible_swaps, item_to_place, locations, world, base_state, itempool,
                                       key_pool, single_player_placement)
         else:
             i, config = 0, world.item_pool_config
             tried = set(attempted)
-            if not item_to_place.is_inside_dungeon_item(world):
+            if not item_to_place.is_inside_dungeon_item(world) and not (item_to_place.prize and item_to_place.dungeon_object):
                 while i < len(config.location_groups[item_to_place.player]):
                     fallback_locations = config.location_groups[item_to_place.player][i].locations
                     other_locs = [x for x in locations if x.name in fallback_locations]
@@ -688,12 +719,37 @@ def ensure_good_items(world, write_skips=False):
         random.shuffle(dungeons)
         dungeon_pool[player] = dungeons
     for dungeon in world.dungeons:
-        if dungeon.prize:
-            dungeon_pool[dungeon.player].remove(dungeon)
-            prize_pool[dungeon.prize.player].remove(dungeon.prize.name)
+        if not dungeon.prize:
+            continue
+        name = dungeon.prize.name
+        prize_player = dungeon.prize.player
+        if dungeon not in dungeon_pool[dungeon.player]:
+            dungeon.prize = None
+            continue
+        if name not in prize_pool[prize_player]:
+            dungeon.prize = None
+            continue
+        dungeon_pool[dungeon.player].remove(dungeon)
+        prize_pool[prize_player].remove(name)
     for p in range(1, world.players + 1):
+        unassigned_placed = []
+        seen = set()
+        for loc in world.get_locations():
+            item = loc.item
+            if (item and item.prize and item.player == p and item.name in prize_pool[p]
+                    and id(item) not in seen):
+                if not item.dungeon_object or item.dungeon_object.prize is not item:
+                    unassigned_placed.append(item)
+                    seen.add(id(item))
+        random.shuffle(unassigned_placed)
         for dungeon in dungeon_pool[p]:
-            dungeon.prize = ItemFactory(prize_pool[p].pop(), p)
+            if unassigned_placed:
+                item = unassigned_placed.pop()
+                prize_pool[p].discard(item.name)
+                dungeon.prize = item
+                item.dungeon_object = dungeon
+            elif prize_pool[p]:
+                dungeon.prize = ItemFactory(prize_pool[p].pop(), p)
 
 
 invalid_location_replacement = {'Arrows (5)': 'Arrows (10)', 'Nothing':  'Rupees (5)',

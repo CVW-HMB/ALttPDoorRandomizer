@@ -113,8 +113,11 @@ def create_item_pool_config(world):
                 single_arrow_placement = list(shop_vanilla_mapping['Red Potion'])
                 single_arrow_placement.append('Red Shield Shop - Right')
                 config.static_placement[player]['Single Arrow'] = single_arrow_placement
+            major_locs = mode_grouping['Overworld Major'] + mode_grouping['Big Chests'] + mode_grouping['Heart Containers']
+            if world.prizeshuffle[player] != 'none':
+                major_locs = major_locs + mode_grouping['Prizes']
             config.location_groups[player] = [
-                LocationGroup('Major').locs(mode_grouping['Overworld Major'] + mode_grouping['Big Chests'] + mode_grouping['Heart Containers'] + mode_grouping['Prizes']),
+                LocationGroup('Major').locs(major_locs),
                 LocationGroup('bkhp').locs(mode_grouping['Heart Pieces']),
                 LocationGroup('bktrash').locs(mode_grouping['Overworld Trash'] + mode_grouping['Dungeon Trash']),
                 LocationGroup('bkgt').locs(mode_grouping['GT Trash'])]
@@ -126,9 +129,11 @@ def create_item_pool_config(world):
             LocationGroup('Backup')
         ]
         config.item_pool = {}
-        init_set = mode_grouping['Overworld Major'] + mode_grouping['Big Chests'] + mode_grouping['Heart Containers'] + mode_grouping['Prizes']
+        init_set = mode_grouping['Overworld Major'] + mode_grouping['Big Chests'] + mode_grouping['Heart Containers']
         for player in range(1, world.players + 1):
             groups = LocationGroup('Major').locs(init_set)
+            if world.prizeshuffle[player] != 'none':
+                groups.locations.extend(mode_grouping['Prizes'])
             if world.bigkeyshuffle[player] != 'none':
                 groups.locations.extend(mode_grouping['Big Keys'])
                 if world.dropshuffle[player] != 'none':
@@ -162,11 +167,13 @@ def create_item_pool_config(world):
         dungeon_set = (mode_grouping['Big Chests'] + mode_grouping['Dungeon Trash'] + mode_grouping['Big Keys'] +
                        mode_grouping['Heart Containers'] + mode_grouping['GT Trash'] + mode_grouping['Small Keys'] +
                        mode_grouping['Compasses'] + mode_grouping['Maps'] + mode_grouping['Key Drops'] +
-                       mode_grouping['Pot Keys'] + mode_grouping['Big Key Drops'] + mode_grouping['Prizes'])
+                       mode_grouping['Pot Keys'] + mode_grouping['Big Key Drops'])
         dungeon_set = set(dungeon_set)
         for loc in world.get_locations():
             if loc.parent_region.dungeon and loc.type in [LocationType.Pot, LocationType.Drop]:
                 dungeon_set.add(loc.name)
+        if any(world.prizeshuffle[p] != 'none' for p in range(1, world.players + 1)):
+            dungeon_set.update(mode_grouping['Prizes'])
         for player in range(1, world.players + 1):
             config.item_pool[player] = determine_major_items(world, player)
             config.location_groups[0].locations = set(dungeon_set)
@@ -294,12 +301,21 @@ def massage_item_pool(world):
         dungeons = list(dungeon_pool[player])
         random.shuffle(dungeons)
         dungeon_pool[player] = dungeons
-    for item in world.itempool:
-        if item.prize:
-            dungeon = dungeon_pool[item.player].pop()
-            dungeon.prize = item
-            item.dungeon_object = dungeon
-        player_pool[item.player].append(item)
+    if world.algorithm == 'vanilla_fill':
+        for player in range(1, world.players + 1):
+            player_prizes = [item for item in world.itempool if item.prize and item.player == player]
+            assign_vanilla_prize_dungeons(world, player, player_prizes)
+        for item in world.itempool:
+            player_pool[item.player].append(item)
+    else:
+        for item in world.itempool:
+            if item.prize:
+                if not dungeon_pool[item.player]:
+                    continue
+                dungeon = dungeon_pool[item.player].pop()
+                dungeon.prize = item
+                item.dungeon_object = dungeon
+            player_pool[item.player].append(item)
     for dungeon in world.dungeons:
         for item in dungeon.all_items:
             if item.is_inside_dungeon_item(world) or item.is_near_dungeon_item(world):
@@ -385,7 +401,7 @@ def determine_major_items(world, player):
     major_item_set = set(major_items)
     if world.progressive == 'off':
         pass  # now what?
-    if world.prizeshuffle[player] not in ['none', 'dungeon']:
+    if world.prizeshuffle[player] == 'wild':
         major_item_set.update({x for x, y in item_table.items() if y[2] == 'Prize'})
     if world.bigkeyshuffle[player] != 'none':
         major_item_set.update({x for x, y in item_table.items() if y[2] == 'BigKey'})
@@ -424,10 +440,71 @@ def classify_major_items(world):
                     item.priority = False
 
 
+def vanilla_prize_dungeons(item, world):
+    """Dungeons that are valid vanilla homes for this prize (same pools as static_placement)."""
+    found = []
+    seen = set()
+    for loc_name in vanilla_mapping.get(item.name, []):
+        loc = world.get_location_unsafe(loc_name, item.player)
+        if loc and loc.parent_region and loc.parent_region.dungeon:
+            dungeon = loc.parent_region.dungeon
+            if dungeon.name not in seen:
+                seen.add(dungeon.name)
+                found.append(dungeon)
+    return found
+
+
+def assign_vanilla_prize_dungeons(world, player, prizes):
+    """Give each prize its vanilla dungeon (or a dungeon from its vanilla prize pool)."""
+    player_prizes = [p for p in prizes if p.player == player and p.location is None]
+    if not player_prizes:
+        return
+
+    available = {}
+    for dungeon in world.dungeons:
+        if dungeon.player != player or not dungeon_table[dungeon.name].prize:
+            continue
+        if dungeon.prize and dungeon.prize not in player_prizes:
+            continue
+        available[dungeon.name] = dungeon
+
+    for item in player_prizes:
+        if item.dungeon_object and item.dungeon_object.prize is item:
+            if item.dungeon_object.name in available:
+                item.dungeon_object.prize = None
+            item.dungeon_object = None
+
+    random.shuffle(player_prizes)
+    player_prizes.sort(key=lambda p: len(vanilla_prize_dungeons(p, world)) or 99)
+
+    for item in player_prizes:
+        options = [d for d in vanilla_prize_dungeons(item, world) if d.name in available]
+        if not options:
+            options = list(available.values())
+        if not options:
+            continue
+        random.shuffle(options)
+        dungeon = options[0]
+        del available[dungeon.name]
+        dungeon.prize = item
+        item.dungeon_object = dungeon
+        if world.item_pool_config and world.item_pool_config.static_placement:
+            vanilla_locs = []
+            for loc_name in vanilla_mapping.get(item.name, []):
+                loc = world.get_location_unsafe(loc_name, player)
+                if loc and loc.parent_region and loc.parent_region.dungeon is dungeon:
+                    vanilla_locs.append(loc_name)
+            if vanilla_locs:
+                world.item_pool_config.static_placement[player][item.name] = vanilla_locs
+
+
 def vanilla_fallback(item_to_place, locations, world):
-    if item_to_place.is_inside_dungeon_item(world):
+    dungeon_name = item_to_place.dungeon
+    if not dungeon_name and item_to_place.dungeon_object:
+        dungeon_name = item_to_place.dungeon_object.name
+    if item_to_place.is_inside_dungeon_item(world) or (item_to_place.prize and dungeon_name):
         return [x for x in locations if x.name in vanilla_fallback_dungeon_set
-                and x.parent_region.dungeon and x.parent_region.dungeon.name == item_to_place.dungeon]
+                and x.parent_region.dungeon and x.parent_region.dungeon.name == dungeon_name]
     return []
 
 
@@ -853,7 +930,7 @@ mode_grouping = {
 vanilla_fallback_dungeon_set = set(mode_grouping['Dungeon Trash'] + mode_grouping['Big Keys'] +
                                    mode_grouping['GT Trash'] + mode_grouping['Small Keys'] +
                                    mode_grouping['Compasses'] + mode_grouping['Maps'] + mode_grouping['Key Drops'] +
-                                   mode_grouping['Big Key Drops'])
+                                   mode_grouping['Big Key Drops'] + mode_grouping['Prizes'])
 
 
 major_items = {'Bombos', 'Book of Mudora', 'Cane of Somaria', 'Ether', 'Fire Rod', 'Flippers', 'Ocarina', 'Hammer',
