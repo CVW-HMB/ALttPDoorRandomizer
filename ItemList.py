@@ -1775,6 +1775,8 @@ def shuffle_event_items(world, player):
 
             try:
                 all_state = world.get_all_state(keys=True)
+                if world.keyshuffle[player] == 'universal':
+                    all_state.assume_shop_keys = True  # Assume keys here so dungeon follower spots are fillable.
                 if world.prizeshuffle[player] != 'wild':
                     from Items import prize_item_table
                     prizes = ItemFactory(list(prize_item_table.keys()), player)

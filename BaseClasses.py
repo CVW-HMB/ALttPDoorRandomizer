@@ -642,6 +642,7 @@ class CollectionState(object):
             self.dungeons_to_check = {player: defaultdict(dict) for player in range(1, parent.players + 1)}
         self.dungeon_limits = None
         self.placing_items = None
+        self.assume_shop_keys = False
         # self.trace = None
 
     def can_reach_from(self, spot, start, player=None):
@@ -1001,6 +1002,7 @@ class CollectionState(object):
                                        for name, checklist in self.dungeons_to_check[player].items()})
             for player in range(1, self.world.players + 1)}
         ret.placing_items = self.placing_items
+        ret.assume_shop_keys = self.assume_shop_keys
         return ret
 
     def apply_dungeon_exploration(self, rrp, player, dungeon_name, checklist):
@@ -1187,6 +1189,8 @@ class CollectionState(object):
         if self.world.keyshuffle[player] == 'universal':
             if self.world.mode[player] == 'standard' and self.world.doorShuffle[player] == 'vanilla' and item == 'Small Key (Escape)':
                 return True  # Cannot access the shop until escape is finished.  This is safe because the key is manually placed in make_custom_item_pool
+            if self.assume_shop_keys:
+                return True
             return self.can_buy_unlimited('Small Key (Universal)', player)
         if count == 1:
             return (item, player) in self.prog_items
@@ -1196,6 +1200,8 @@ class CollectionState(object):
         if self.world.keyshuffle[player] == 'universal':
             if self.world.mode[player] == 'standard' and self.world.doorShuffle[player] == 'vanilla' and item == 'Small Key (Escape)':
                 return True  # Cannot access the shop until escape is finished.  This is safe because the key is manually placed in make_custom_item_pool
+            if self.assume_shop_keys:
+                return True
             return self.can_buy_unlimited('Small Key (Universal)', player)
         obtained = self.prog_items[item, player] - self.forced_keys[item, player]
         return obtained >= count
