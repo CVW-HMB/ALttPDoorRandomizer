@@ -1740,6 +1740,7 @@ def shuffle_event_items(world, player):
     if world.shuffle_followers[player]:
         available_quests = follower_quests.copy()
         available_pickups = [quests[0] for quests in available_quests.values()]
+        dungeon_follower_locations = {'Zelda Pickup', 'Suspicious Maiden'}
 
         # finalize customizer followers first
         for loc_name in follower_quests.keys():
@@ -1758,10 +1759,20 @@ def shuffle_event_items(world, player):
             available_pickups.remove(zelda_pickup)
             set_event_item(world, player, zelda_dropoff, zelda_pickup)
 
-        follower_locations = [world.get_location(loc_name, player) for loc_name in available_quests.keys()]
-
+        logger = logging.getLogger('')
         attempts = 10
+        last_error = None
         for attempt in range(attempts):
+            for loc_name in available_quests.keys():
+                world.get_location(loc_name, player).item = None
+
+            follower_locations = [world.get_location(loc_name, player) for loc_name in available_quests.keys()]
+            dungeon_locs = [loc for loc in follower_locations if loc.name in dungeon_follower_locations]
+            other_locs = [loc for loc in follower_locations if loc.name not in dungeon_follower_locations]
+            random.shuffle(dungeon_locs)
+            random.shuffle(other_locs)
+            follower_locations = dungeon_locs + other_locs
+
             try:
                 all_state = world.get_all_state(keys=True)
                 if world.prizeshuffle[player] != 'wild':
@@ -1770,13 +1781,12 @@ def shuffle_event_items(world, player):
                     for prize in prizes:
                         all_state.collect(prize, True)
 
-                # randomize the follower pickups, but ensure that the last items are the unrestrictive ones
+                # Place restrictive pickups first (end of list is popped first); unrestrictive last.
                 unrestrictive_pickups = ItemFactory([p for p in ['Zelda Herself', 'Sign Vandalized'] if p in available_pickups], player)
-                restrictive_pickups = ItemFactory([p for p in available_pickups if p not in unrestrictive_pickups], player)
+                restrictive_pickups = ItemFactory([p for p in available_pickups if p not in ['Zelda Herself', 'Sign Vandalized']], player)
                 random.shuffle(restrictive_pickups)
                 random.shuffle(unrestrictive_pickups)
                 pickup_items = unrestrictive_pickups + restrictive_pickups
-                random.shuffle(follower_locations)
 
                 fill_restrictive(world, all_state, follower_locations, pickup_items, single_player_placement=True)
                 for loc_name in available_quests.keys():
@@ -1784,13 +1794,23 @@ def shuffle_event_items(world, player):
                     if loc.item:
                         set_event_item(world, player, loc_name)
             except FillError as e:
-                logging.getLogger('').info("Failed to place followers (%s). Will retry %s more times", e, attempts - attempt - 1)
-                for loc in follower_locations:
-                    loc.item = None
+                remaining = attempts - attempt - 1
+                last_error = e
+                logger.warning("Failed to place followers (%s). Will retry %s more times", e, remaining)
                 continue
             break
         else:
-            raise FillError(f'Unable to place followers: {", ".join(list(map(lambda d: d.hint_text, follower_locations)))}')
+            unfilled = [world.get_location(loc_name, player) for loc_name in available_quests.keys()
+                        if world.get_location(loc_name, player).item is None]
+            if not unfilled:
+                unfilled = [world.get_location(loc_name, player) for loc_name in available_quests.keys()]
+            detail = f' ({last_error})' if last_error else ''
+            def follower_location_desc(location):
+                dungeon = location.parent_region.dungeon.name if location.parent_region and location.parent_region.dungeon else None
+                return f'{location.name} ({dungeon})' if dungeon else location.name
+            raise FillError(
+                f'Unable to place followers: {", ".join(follower_location_desc(loc) for loc in unfilled)}{detail}'
+            )
 
 
 def get_item_and_event_flag(item, world, player, dungeon_pool, prize_set, prize_pool):
