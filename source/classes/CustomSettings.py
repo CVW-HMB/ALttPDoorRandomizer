@@ -197,6 +197,7 @@ class CustomSettings(object):
                 args.shufflepots[p] = get_setting(settings['shufflepots'], args.shufflepots[p])
                 args.bombbag[p] = get_setting(settings['bombbag'], args.bombbag[p])
                 args.shufflelinks[p] = get_setting(settings['shufflelinks'], args.shufflelinks[p])
+                args.shuffleganon[p] = get_setting(settings['shuffleganon'], args.shuffleganon[p])
                 args.shuffletavern[p] = get_setting(settings['shuffletavern'], args.shuffletavern[p])
                 args.skullwoods[p] = get_setting(settings['skullwoods'], args.skullwoods[p])
                 args.linked_drops[p] = get_setting(settings['linked_drops'], args.linked_drops[p])
