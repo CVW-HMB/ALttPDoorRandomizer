@@ -319,10 +319,23 @@ def valid_key_placement(item, location, key_pool, collection_state, world):
         return not item.is_inside_dungeon_item(world)
 
 
+def location_in_algorithm_restricted_set(location, world, player):
+    config = world.item_pool_config
+    if world.algorithm == 'major_only':
+        return location.name in config.reserved_locations[player]
+    if world.algorithm == 'dungeon_only':
+        return location.name in config.location_groups[0].locations
+    if world.algorithm == 'district':
+        restricted = config.location_groups[0].locations
+        return location.name in restricted and player in restricted[location.name]
+    return True
+
+
 def valid_reserved_placement(item, location, world):
-    # Prize items have their own pool/dungeon constraints. Reserving major
-    # locations (including "X - Prize") must not block on-boss or in-dungeon prizes.
     if item.prize:
+        if (world.algorithm in ['major_only', 'dungeon_only', 'district']
+                and world.prizeshuffle[item.player] in ['dungeon', 'nearby']):
+            return location_in_algorithm_restricted_set(location, world, item.player)
         return True
     if item.player == location.player and item.is_inside_dungeon_item(world):
         return location.name not in world.item_pool_config.reserved_locations[location.player]

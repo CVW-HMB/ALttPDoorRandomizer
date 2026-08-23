@@ -343,6 +343,9 @@ def verify_item_pool_config(world):
         for player in major_pool:
             available_locations = [world.get_location(l, player) for l in world.item_pool_config.location_groups[0].locations]
             available_locations = [l for l in available_locations if l.item is None]
+            if world.prizeshuffle[player] in ['dungeon', 'nearby']:
+                prize_names = set(mode_grouping['Prizes'])
+                available_locations = [l for l in available_locations if l.name not in prize_names]
             if len(available_locations) < len(major_pool[player]):
                 if len(major_pool[player]) - len(available_locations) <= len(mode_grouping['Heart Pieces Visible']):
                     logging.getLogger('').warning('Expanding location pool for extra major items')
