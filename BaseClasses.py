@@ -112,6 +112,8 @@ class World(object):
         self.fish = BabelFish()
         self.data_tables = {}
         self.damage_table = {}
+        # district + nearby: dungeon names whose nearby items are forced in-dungeon
+        self.district_nearby_forced_inside = defaultdict(set)
 
 
         for player in range(1, players + 1):
@@ -1664,14 +1666,9 @@ class Region(object):
             ret = ret or (len(self.districts) and item_dungeon and len([d for d in self.districts if d in item_dungeon.districts]))
             return ret and item.player == self.player
 
-        inside_dungeon_item = ((item.smallkey and self.world.keyshuffle[item.player] == 'none')
-                               or (item.bigkey and self.world.bigkeyshuffle[item.player] == 'none')
-                               or (item.map and self.world.mapshuffle[item.player] == 'none')
-                               or (item.compass and self.world.compassshuffle[item.player] == 'none')
-                               or (item.prize and self.world.prizeshuffle[item.player] == 'dungeon'))
         # not all small keys to escape must be in escape
         # sewer_hack = self.world.mode[item.player] == 'standard' and item.name == 'Small Key (Escape)'
-        if inside_dungeon_item:
+        if item.is_inside_dungeon_item(self.world):
             return self.dungeon and self.dungeon.is_dungeon_item(item) and item.player == self.player
         return True
 
@@ -2859,14 +2856,34 @@ class Item(object):
             item_dungeon = 'Hyrule Castle'
         return item_dungeon
 
+    def is_district_nearby_forced_inside(self, world):
+        forced = getattr(world, 'district_nearby_forced_inside', None)
+        if not forced:
+            return False
+        player_set = forced.get(self.player)
+        if not player_set:
+            return False
+        dungeon_name = self.dungeon
+        if not dungeon_name and self.prize and self.dungeon_object:
+            dungeon_name = self.dungeon_object.name
+        return bool(dungeon_name) and dungeon_name in player_set
+
     def is_inside_dungeon_item(self, world):
-        return ((self.prize and world.prizeshuffle[self.player] in ['none', 'dungeon'])
+        if ((self.prize and world.prizeshuffle[self.player] in ['none', 'dungeon'])
                 or (self.smallkey and world.keyshuffle[self.player] == 'none')
                 or (self.bigkey and world.bigkeyshuffle[self.player] == 'none')
                 or (self.compass and world.compassshuffle[self.player] == 'none')
-                or (self.map and world.mapshuffle[self.player] == 'none'))
+                or (self.map and world.mapshuffle[self.player] == 'none')):
+            return True
+        # district algorithm may force uncovered nearby items back in-dungeon
+        return self.is_nearby_by_setting(world) and self.is_district_nearby_forced_inside(world)
 
     def is_near_dungeon_item(self, world):
+        if not self.is_nearby_by_setting(world):
+            return False
+        return not self.is_district_nearby_forced_inside(world)
+
+    def is_nearby_by_setting(self, world):
         return ((self.prize and world.prizeshuffle[self.player] == 'nearby')
                 or (self.smallkey and world.keyshuffle[self.player] == 'nearby')
                 or (self.bigkey and world.bigkeyshuffle[self.player] == 'nearby')

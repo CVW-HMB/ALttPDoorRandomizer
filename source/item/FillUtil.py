@@ -179,8 +179,17 @@ def create_item_pool_config(world):
             config.location_groups[0].locations = set(dungeon_set)
 
 
+def player_has_nearby_dungeon_shuffle(world, player):
+    return (world.keyshuffle[player] == 'nearby'
+            or world.bigkeyshuffle[player] == 'nearby'
+            or world.mapshuffle[player] == 'nearby'
+            or world.compassshuffle[player] == 'nearby'
+            or world.prizeshuffle[player] == 'nearby')
+
+
 def district_item_pool_config(world):
     resolve_districts(world)
+    world.district_nearby_forced_inside = defaultdict(set)
     if world.algorithm == 'district':
         config = world.item_pool_config
         config.location_groups = [
@@ -207,19 +216,55 @@ def district_item_pool_config(world):
                     district_choices[name] = (so or district.sphere_one, amt + dist_adj)
 
         chosen_locations = defaultdict(set)
+        chosen_names = []
         adjustment_cnt = 0
+
+        def adopt_district(choice):
+            nonlocal adjustment_cnt
+            so, adj = district_choices[choice]
+            for player in range(1, world.players + 1):
+                for location in world.districts[player][choice].locations:
+                    chosen_locations[location].add(player)
+            del district_choices[choice]
+            config.recorded_choices.append(choice)
+            chosen_names.append(choice)
+            adjustment_cnt += adj
+
+        def location_cnt():
+            return len(chosen_locations) - adjustment_cnt
+
+        def district_nearby_coverage(world, chosen_names):
+            """Return (kept_nearby_count, uncovered_player_to_dungeons).
+
+            Kept nearby items are those whose dungeon district was chosen (so interior
+            locations are eligible) and will still place as nearby.
+            Uncovered dungeons will be forced in-dungeon and do not need district slots.
+            """
+            kept = 0
+            uncovered = defaultdict(set)
+            for player in range(1, world.players + 1):
+                if not player_has_nearby_dungeon_shuffle(world, player):
+                    continue
+                for dungeon in world.dungeons:
+                    if dungeon.player != player:
+                        continue
+                    nearby_items = [i for i in dungeon.all_items if i.is_nearby_by_setting(world)]
+                    if not nearby_items:
+                        continue
+                    if dungeon.name in chosen_names:
+                        kept += len(nearby_items)
+                    else:
+                        uncovered[player].add(dungeon.name)
+            return kept, uncovered
+
+        def effective_need():
+            kept, uncovered = district_nearby_coverage(world, chosen_names)
+            return item_cnt + kept, uncovered
 
         # choose a sphere one district
         sphere_one_choices = [d for d, info in district_choices.items() if info[0]]
         sphere_one = random.choice(sphere_one_choices)
-        so, adj = district_choices[sphere_one]
-        for player in range(1, world.players + 1):
-            for location in world.districts[player][sphere_one].locations:
-                chosen_locations[location].add(player)
-        del district_choices[sphere_one]
-        config.recorded_choices.append(sphere_one)
-        adjustment_cnt += adj
-        location_cnt = len(chosen_locations) - adjustment_cnt
+        adopt_district(sphere_one)
 
         scale_factors = defaultdict(int)
         scale_total = 0
@@ -235,19 +280,35 @@ def district_item_pool_config(world):
         scale_divisors = defaultdict(lambda: 1)
         scale_divisors.update(scale_factors)
 
-        while location_cnt < item_cnt:
-            weights = [scale_total / scale_divisors[d] for d in district_choices.keys()]
-            choice = random.choices(list(district_choices.keys()), weights=weights, k=1)[0]
-            so, adj = district_choices[choice]
+        while district_choices:
+            need, uncovered = effective_need()
+            if location_cnt() >= need:
+                break
 
-            for player in range(1, world.players + 1):
-                for location in world.districts[player][choice].locations:
-                    chosen_locations[location].add(player)
-            del district_choices[choice]
-            config.recorded_choices.append(choice)
-            adjustment_cnt += adj
-            location_cnt = len(chosen_locations) - adjustment_cnt
-        config.placeholders = location_cnt - item_cnt
+            # Prefer choosing the dungeon district itself for still-uncovered
+            # nearby dungeons so those items can remain nearby; anything still
+            # uncovered after selection is forced in-dungeon.
+            weights = []
+            choices = list(district_choices.keys())
+            for d_name in choices:
+                base = scale_total / scale_divisors[d_name]
+                covers = sum(1 for dungeons in uncovered.values() if d_name in dungeons)
+                weights.append(base * (1 + 10 * covers))
+            choice = random.choices(choices, weights=weights, k=1)[0]
+            adopt_district(choice)
+
+        need, uncovered = effective_need()
+        for player, dungeon_names in uncovered.items():
+            world.district_nearby_forced_inside[player].update(dungeon_names)
+        forced_summary = {p: sorted(names)
+                          for p, names in world.district_nearby_forced_inside.items()
+                          if names}
+        if forced_summary:
+            logging.getLogger('').debug(
+                'District+nearby: forcing in-dungeon placement for uncovered dungeons: %s',
+                forced_summary)
+
+        config.placeholders = location_cnt() - need
         config.location_groups[0].locations = chosen_locations
 
 
@@ -543,8 +604,17 @@ def filter_locations(item_to_place, locations, world, vanilla_skip=False, potion
             return filtered
     if world.algorithm == 'district':
         config = world.item_pool_config
-        if ((isinstance(item_to_place, str) and item_to_place == 'Placeholder')
-           or item_to_place.name in config.item_pool[item_to_place.player]):
+        # Inside-dungeon items (including district+nearby forced-inside) are not
+        # restricted to the chosen district set; they place in their dungeon.
+        restrict_item = (
+            (isinstance(item_to_place, str) and item_to_place == 'Placeholder')
+            or (
+                not isinstance(item_to_place, str)
+                and item_to_place.name in config.item_pool[item_to_place.player]
+                and not item_to_place.is_inside_dungeon_item(world)
+            )
+        )
+        if restrict_item:
             restricted = config.location_groups[0].locations
             filtered = [l for l in locations if l.name in restricted and l.player in restricted[l.name]]
             return filtered

@@ -304,7 +304,8 @@ def valid_key_placement(item, location, key_pool, collection_state, world):
         if key_logic.prize_location and dungeon.prize and dungeon.prize.location and dungeon.prize.location.player == item.player:
             prize_loc = dungeon.prize.location
         cr_count = world.crystals_needed_for_gt[location.player]
-        wild_keys = world.keyshuffle[item.player] != 'none'
+        wild_keys = (world.keyshuffle[item.player] != 'none'
+                     and not item.is_inside_dungeon_item(world))
         if wild_keys:
             reached_keys = {x for x in collection_state.locations_checked
                             if x.item and x.item.name == key_logic.small_key_name and x.item.player == item.player}
@@ -377,11 +378,7 @@ def track_dungeon_items(item, location, world):
 
 
 def is_dungeon_item(item, world):
-    return ((item.prize and world.prizeshuffle[item.player] in ['none', 'dungeon'])
-            or (item.smallkey and world.keyshuffle[item.player] == 'none')
-            or (item.bigkey and world.bigkeyshuffle[item.player] == 'none')
-            or (item.compass and world.compassshuffle[item.player] == 'none')
-            or (item.map and world.mapshuffle[item.player] == 'none'))
+    return item.is_inside_dungeon_item(world)
 
 
 def recovery_placement(item_to_place, locations, world, state, base_state, itempool, perform_access_check, attempted,
