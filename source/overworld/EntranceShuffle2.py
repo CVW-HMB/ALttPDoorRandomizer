@@ -79,7 +79,7 @@ def link_entrances_new(world, player):
     global LW_Entrances, DW_Entrances
     LW_Entrances = []
     DW_Entrances = []
-    for e in [e for e in avail_pool.entrances if e not in drop_map]:
+    for e in sorted(e for e in avail_pool.entrances if e not in drop_map):
         region = world.get_entrance(e, player).parent_region
         if region.type == RegionType.LightWorld:
             LW_Entrances.append(e)
@@ -116,7 +116,8 @@ def link_entrances_new(world, player):
                 handle_skull_woods_drops(avail_pool, pool['entrances'], mode_cfg)
             elif special_shuffle == 'normal_drops':
                 cross_world = mode_cfg['cross_world'] == 'on' if 'cross_world' in mode_cfg else False
-                do_holes_and_linked_drops(set(avail_pool.entrances), set(avail_pool.exits), avail_pool, cross_world)
+                do_holes_and_linked_drops(sorted(avail_pool.entrances),
+                                          sorted(avail_pool.exits), avail_pool, cross_world)
             elif special_shuffle == 'fixed_shuffle':
                 do_fixed_shuffle(avail_pool, pool['entrances'])
             elif special_shuffle == 'same_world':
@@ -126,7 +127,7 @@ def link_entrances_new(world, player):
             elif special_shuffle == 'old_man_cave_east':
                 exits = [x for x in pool['entrances'] if x in avail_pool.exits]
                 cross_world = mode_cfg['cross_world'] == 'on' if 'cross_world' in mode_cfg else False
-                do_old_man_cave_exit(set(avail_pool.entrances), exits, avail_pool, cross_world)
+                do_old_man_cave_exit(sorted(avail_pool.entrances), exits, avail_pool, cross_world)
             elif special_shuffle == 'limited':
                 do_limited_shuffle(pool, avail_pool)
             elif special_shuffle == 'limited_lw':
@@ -152,7 +153,8 @@ def link_entrances_new(world, player):
         if undefined_behavior == 'vanilla':
             do_vanilla_connections(avail_pool)
         elif undefined_behavior in ['shuffle', 'swap']:
-            do_main_shuffle(set(avail_pool.entrances), set(avail_pool.exits), avail_pool, mode_cfg)
+            do_main_shuffle(sorted(avail_pool.entrances),
+                            sorted(avail_pool.exits), avail_pool, mode_cfg)
         elif undefined_behavior == 'error':
             assert len(avail_pool.entrances)+len(avail_pool.exits) == 0, 'Not all entrances were placed in their districts'
 
@@ -185,7 +187,7 @@ def link_entrances_new(world, player):
 
 
 def do_vanilla_connections(avail_pool):
-    for ent in list(avail_pool.entrances):
+    for ent in sorted(avail_pool.entrances):
         if ent in avail_pool.default_map and avail_pool.default_map[ent] in avail_pool.exits:
             connect_vanilla_two_way(ent, avail_pool.default_map[ent], avail_pool)
         if ent in avail_pool.one_way_map and avail_pool.one_way_map[ent] in avail_pool.exits:
@@ -200,6 +202,8 @@ def do_vanilla_connections(avail_pool):
 
 def do_main_shuffle(entrances, exits, avail, mode_def):
     cross_world = mode_def['cross_world'] == 'on' if 'cross_world' in mode_def else False
+    entrances = sorted(entrances)
+    exits = sorted(exits)
     # drops and holes
     do_holes_and_linked_drops(entrances, exits, avail, cross_world)
 
@@ -238,8 +242,7 @@ def do_main_shuffle(entrances, exits, avail, mode_def):
     # links house
     do_links_house(entrances, exits, avail, cross_world)
 
-    # mandatory exits
-    rem_entrances, rem_exits = set(), set()
+    rem_entrances, rem_exits = [], []
     if not cross_world:
         determine_dungeon_restrictions(avail)
         mand_exits = figure_out_must_exits_same_world(entrances, exits, avail)
@@ -263,7 +266,7 @@ def do_main_shuffle(entrances, exits, avail, mode_def):
             # remove HC exits as connector if sanc is guaranteed in HC
             if any('Old Man House' in cave for cave in cave_option) \
                     or (avail.is_sanc_forced_in_hc() and any('Hyrule Castle' in cave for cave in cave_option)):
-                rem_exits.update([item for item in cave_option])
+                rem_exits.extend(cave_option)
             else:
                 new_mec.append(cave_option)
         multi_exit_caves = new_mec
@@ -272,8 +275,8 @@ def do_main_shuffle(entrances, exits, avail, mode_def):
             do_world_mandatory(dw_entrances, must_exit_dw, 'DarkWorld')
         else:
             do_world_mandatory(lw_entrances, must_exit_lw, 'LightWorld')
-        rem_entrances.update(lw_entrances)
-        rem_entrances.update(dw_entrances)
+        rem_entrances.extend(lw_entrances)
+        rem_entrances.extend(dw_entrances)
     else:
         # cross world mandatory
         entrance_list = list(entrances)
@@ -282,12 +285,12 @@ def do_main_shuffle(entrances, exits, avail, mode_def):
             entrance_list = [e for e in entrance_list if e not in forbidden]
         must_exit, multi_exit_caves = figure_out_must_exits_cross_world(entrances, exits, avail)
         do_mandatory_connections(avail, entrance_list, multi_exit_caves, must_exit)
-        rem_entrances.update(entrance_list)
+        rem_entrances.extend(entrance_list)
         if avail.swapped:
-            rem_entrances.update(forbidden)
+            rem_entrances.extend(forbidden)
 
-    rem_exits.update([x for item in multi_exit_caves for x in item if x in avail.exits])
-    rem_exits.update(exits)
+    rem_exits.extend(x for item in multi_exit_caves for x in item if x in avail.exits)
+    rem_exits.extend(exits)
     if avail.swapped:
         rem_exits = [x for x in rem_exits if x in avail.exits]
 
@@ -327,7 +330,7 @@ def do_main_shuffle(entrances, exits, avail, mode_def):
         # OM Cave entrance in lw/dw if cross_world off
         if 'Old Man Cave Exit (West)' in rem_exits:
             world_limiter = DW_Entrances if avail.inverted else LW_Entrances
-            om_cave_options = sorted([x for x in rem_entrances if x in world_limiter and bonk_fairy_exception(avail, x)])
+            om_cave_options = [x for x in rem_entrances if x in world_limiter and bonk_fairy_exception(avail, x)]
             om_cave_choice = random.choice(om_cave_options)
             if not avail.coupled:
                 connect_exit('Old Man Cave Exit (West)', om_cave_choice, avail)
@@ -353,11 +356,10 @@ def do_main_shuffle(entrances, exits, avail, mode_def):
 
     # the rest of the caves
     multi_exit_caves = figure_out_true_exits(rem_exits, avail)
-    unused_entrances = set()
+    unused_entrances = []
     if not cross_world:
         lw_entrances, dw_entrances = [], []
-        left = sorted(rem_entrances)
-        for x in left:
+        for x in rem_entrances:
             if bonk_fairy_exception(avail, x):
                 lw_entrances.append(x) if x in LW_Entrances else dw_entrances.append(x)
         do_same_world_connectors(lw_entrances, dw_entrances, multi_exit_caves, avail)
@@ -365,21 +367,21 @@ def do_main_shuffle(entrances, exits, avail, mode_def):
             determine_dungeon_restrictions(avail)
             possibles = figure_out_possible_exits(rem_exits)
             do_same_world_possible_connectors(lw_entrances, dw_entrances, possibles, avail)
-        unused_entrances.update(lw_entrances)
-        unused_entrances.update(dw_entrances)
+        unused_entrances.extend(lw_entrances)
+        unused_entrances.extend(dw_entrances)
     else:
-        entrance_list = sorted([x for x in rem_entrances if bonk_fairy_exception(avail, x)])
+        entrance_list = [x for x in rem_entrances if bonk_fairy_exception(avail, x)]
         do_cross_world_connectors(entrance_list, multi_exit_caves, avail)
-        unused_entrances.update(entrance_list)
+        unused_entrances.extend(entrance_list)
 
     if avail.is_standard() and 'Bonk Fairy (Light)' in rem_entrances:
-        rem_entrances = list(unused_entrances) + ['Bonk Fairy (Light)']
+        rem_entrances = unused_entrances + ['Bonk Fairy (Light)']
     else:
-        rem_entrances = list(unused_entrances)
-    rem_entrances.sort()
+        rem_entrances = unused_entrances
     rem_exits = list(rem_exits if avail.coupled else avail.decoupled_exits)
     if avail.swapped:
         rem_exits = [x for x in rem_exits if x in avail.exits]
+    rem_entrances.sort()
     rem_exits.sort()
     random.shuffle(rem_entrances)
     random.shuffle(rem_exits)
@@ -402,8 +404,8 @@ def do_old_man_cave_exit(entrances, exits, avail, cross_world):
             region_name = 'West Death Mountain (Top)'
         else:
             region_name = 'West Dark Death Mountain (Top)'
-        om_cave_options = list(get_accessible_entrances(region_name, avail, [], cross_world, True, True, True, True))
-        om_cave_options = [e for e in om_cave_options if e in avail.entrances]
+        om_cave_options = [e for e in get_accessible_entrances(region_name, avail, [], cross_world, True, True, True, True)
+                           if e in avail.entrances]
         if avail.swapped:
             om_cave_options = [e for e in om_cave_options if e not in Forbidden_Swap_Entrances]
         assert len(om_cave_options), 'No available entrances left to place Old Man Cave'
@@ -795,16 +797,22 @@ def get_starting_entrances(avail, force_starting_world=True):
     while not len(entrances):
         # find largest walkable sector
         while (sector is None):
-            sector = max(avail.world.owsectors[avail.player], key=lambda x: len(x) - (0 if x not in invalid_sectors else 1000))
+            sector = max(
+                avail.world.owsectors[avail.player],
+                key=lambda x: (
+                    len(x) - (0 if x not in invalid_sectors else 1000),
+                    tuple(sorted(tuple(sorted(part)) for part in x)),
+                ),
+            )
             if not ((avail.world.owCrossed[avail.player] == 'polar' and avail.world.owMixed[avail.player]) or avail.world.owCrossed[avail.player] not in ['none', 'polar']) \
                     and avail.world.get_region(next(iter(next(iter(sector)))), avail.player).type != (RegionType.DarkWorld if avail.inverted else RegionType.LightWorld):
                 invalid_sectors.append(sector)
                 sector = None
-        regions = max(sector, key=lambda x: len(x))
+        regions = max(sector, key=lambda x: (len(x), tuple(sorted(x))))
         
         # get entrances from list of regions
         entrances = list()
-        for region_name in regions:
+        for region_name in sorted(regions):
             if avail.world.shuffle[avail.player] == 'simple' and region_name in OWTileRegions.keys() and OWTileRegions[region_name] in [0x03, 0x05, 0x07]:
                 continue
             region = avail.world.get_region(region_name, avail.player)
@@ -816,7 +824,7 @@ def get_starting_entrances(avail, force_starting_world=True):
         invalid_sectors.append(sector)
         sector = None
     
-    return entrances
+    return sorted(entrances)
 
 
 def get_nearby_entrances(avail, start_region):
@@ -897,7 +905,7 @@ def get_accessible_entrances(start_region, avail, assumed_inventory=[], cross_wo
             if exit.spot_type == 'Entrance' and (not exit_rules or exit.access_rule(blank_state)):
                 found_entrances.append(exit.name)
 
-    return found_entrances
+    return sorted(found_entrances)
 
 
 def figure_out_connectors(exits, avail, cross_world=True):
@@ -1130,7 +1138,7 @@ def determine_dungeon_restrictions(avail):
 def figure_out_must_exits_same_world(entrances, exits, avail):
     lw_entrances, dw_entrances = [], []
 
-    for x in entrances:
+    for x in sorted(entrances):
         lw_entrances.append(x) if x in LW_Entrances else dw_entrances.append(x)
     multi_exit_caves = figure_out_connectors(exits, avail, False)
 
@@ -1348,9 +1356,9 @@ def do_fixed_shuffle(avail, entrance_list):
                                 new_x = 'Links House Exit'
                         lw_exits.add(new_x)
             filtered_choices = {i: opt for i, opt in choices.items() if all(t in lw_exits for t in opt[2])}
-            _, choice = random.choice(list(filtered_choices.items()))
+            _, choice = random.choice(sorted(filtered_choices.items(), key=lambda kv: kv[0]))
         else:
-            _, choice = random.choice(list(choices.items()))
+            _, choice = random.choice(sorted(choices.items(), key=lambda kv: kv[0]))
         del choices[choice[0]]
         for t, entrance in enumerate(entrances):
             target = choice[2][t]
@@ -1713,11 +1721,11 @@ def must_exit_filter(avail, candidates, shuffle_pool):
     filtered_list = []
     for cand in candidates:
         if isinstance(cand, tuple):
-            candidates = [x for x in cand if x in avail.entrances and x in shuffle_pool]
-            if len(candidates) > 1:
-                filtered_list.append(random.choice(candidates))
-            elif len(candidates) == 1:
-                filtered_list.append(candidates[0])
+            options = [x for x in cand if x in avail.entrances and x in shuffle_pool]
+            if len(options) > 1:
+                filtered_list.append(random.choice(options))
+            elif len(options) == 1:
+                filtered_list.append(options[0])
         elif cand in avail.entrances and cand in shuffle_pool:
             filtered_list.append(cand)
     return filtered_list

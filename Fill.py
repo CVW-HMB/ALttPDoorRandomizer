@@ -720,9 +720,8 @@ def ensure_good_items(world, write_skips=False):
     for dungeon in world.dungeons:
         if dungeon_table[dungeon.name].prize:
             dungeon_pool[dungeon.player].append(dungeon)
-    prize_set = set(prize_item_table.keys())
     for p in range(1, world.players + 1):
-        prize_pool[p] = prize_set.copy()
+        prize_pool[p] = sorted(prize_item_table.keys())
 
     for player in dungeon_pool:
         dungeons = list(dungeon_pool[player])
@@ -755,11 +754,11 @@ def ensure_good_items(world, write_skips=False):
         for dungeon in dungeon_pool[p]:
             if unassigned_placed:
                 item = unassigned_placed.pop()
-                prize_pool[p].discard(item.name)
+                prize_pool[p].remove(item.name)
                 dungeon.prize = item
                 item.dungeon_object = dungeon
             elif prize_pool[p]:
-                dungeon.prize = ItemFactory(prize_pool[p].pop(), p)
+                dungeon.prize = ItemFactory(prize_pool[p].pop(0), p)
 
 
 invalid_location_replacement = {'Arrows (5)': 'Arrows (10)', 'Nothing':  'Rupees (5)',
@@ -1100,7 +1099,7 @@ def balance_money_progression(world):
     kiki_check = {player: False for player in range(1, world.players+1)}
     kiki_paid = {player: False for player in range(1, world.players+1)}
     rooms_visited = {player: set() for player in range(1, world.players+1)}
-    balance_locations = {player: set() for player in range(1, world.players+1)}
+    balance_locations = {player: [] for player in range(1, world.players+1)}
 
     pay_for_locations = {'Bottle Merchant': 100, 'Chest Game': 30, 'Digging Game': 80,
                          'King Zora': 500, 'Blacksmith': 10}
@@ -1194,7 +1193,7 @@ def balance_money_progression(world):
             from DungeonGenerator import GenerationException
             raise GenerationException(f'Infinite loop detected at "balance_money_progression"')
         sphere_costs = {player: 0 for player in range(1, world.players+1)}
-        locked_by_money = {player: set() for player in range(1, world.players+1)}
+        locked_by_money = {player: [] for player in range(1, world.players+1)}
         sphere_locations = get_sphere_locations(state, unchecked_locations)
         checked_locations = []
         progress_this_round = False
@@ -1204,7 +1203,7 @@ def balance_money_progression(world):
                 if not kiki_paid[player]:
                     kiki_check[player] = True
                     sphere_costs[player] += 110
-                    locked_by_money[player].add('Kiki')
+                    locked_by_money[player].append('Kiki')
         for location in sphere_locations:
             location_free, loc_player = True, location.player
             if location.parent_region.name in shop_to_location_table and location.name != 'Potion Shop':
@@ -1220,13 +1219,13 @@ def balance_money_progression(world):
                     else:
                         location_free = False
                         sphere_costs[loc_player] += shop_item['price']
-                        locked_by_money[loc_player].add(location)
+                        locked_by_money[loc_player].append(location)
             elif location.name in pay_for_locations:
                 sphere_costs[loc_player] += pay_for_locations[location.name]
                 location_free = False
-                locked_by_money[loc_player].add(location)
+                locked_by_money[loc_player].append(location)
             if kiki_check[loc_player] and not kiki_paid[loc_player] and kiki_required(state, location):
-                locked_by_money[loc_player].add(location)
+                locked_by_money[loc_player].append(location)
                 location_free = False
             if location_free and location.item:
                 state.collect(location.item, True, location)
@@ -1237,11 +1236,11 @@ def balance_money_progression(world):
                         if not (location.item.name == 'Rupee (1)' and world.algorithm != 'district'):
                             wallet[location.item.player] += rupee_chart[location.item.name]
                             if location.item.name != 'Rupees (300)':
-                                balance_locations[location.item.player].add(location)
+                                balance_locations[location.item.player].append(location)
                     elif interesting_item(location, location.item, world, location.item.player):
                         checked_locations.append(location)
                     elif location.item.name in acceptable_balancers:
-                        balance_locations[location.item.player].add(location)
+                        balance_locations[location.item.player].append(location)
                     else:
                         # Non-interesting free loot still counts as sphere progress so we
                         # don't fall into the money-balancing branch incorrectly.
@@ -1261,14 +1260,14 @@ def balance_money_progression(world):
         else:
             # No reachable progress without spending money (or softlocked path).
             # check for solvent players
-            solvent = set()
-            insolvent = set()
+            solvent = []
+            insolvent = []
             for player in range(1, world.players+1):
                 modifier = world.money_balance[player]/100
                 if wallet[player] >= sphere_costs[player] * modifier >= 0:
-                    solvent.add(player)
+                    solvent.append(player)
                 if sphere_costs[player] > 0 and sphere_costs[player] * modifier > wallet[player]:
-                    insolvent.add(player)
+                    insolvent.append(player)
 
             # Nothing reachable and nothing money-gated: cannot progress via balancing.
             if not sphere_locations and not any(locked_by_money.values()):
@@ -1326,7 +1325,7 @@ def balance_money_progression(world):
                         best_target.item = ItemFactory('Rupees (300)', best_target.item.player)
                         best_target.item.location = best_target
                         check_shop_swap(best_target.item.location, make_item_free)
-                        balance_locations[target_player].discard(best_target)  # Don't keep using a minted 300 as a further upgrade base.
+                        balance_locations[target_player].remove(best_target)  # Don't keep using a minted 300 as a further upgrade base.
                     else:
                         old_item = best_target.item
                         logger.debug(f'Swapping {best_target.item.name} @ {best_target.name} for {best_swap.item.name} @ {best_swap.name}')
@@ -1340,7 +1339,7 @@ def balance_money_progression(world):
                     increase = best_value - old_value
                     if increase <= 0:
                         # Avoid infinite loops if a candidate cannot actually help.
-                        balance_locations[target_player].discard(best_target)
+                        balance_locations[target_player].remove(best_target)
                         if not balance_locations[target_player]:
                             if state.can_farm_rupees(target_player):
                                 logger.warning(f'Unable to increase early money further. Short by {difference}; continuing (player can farm)')
@@ -1349,7 +1348,8 @@ def balance_money_progression(world):
                         continue
                     difference -= increase
                     wallet[target_player] += increase
-                solvent.add(target_player)
+                if target_player not in solvent:
+                    solvent.append(target_player)
             # apply solvency
             for player in solvent:
                 modifier = world.money_balance[player]/100

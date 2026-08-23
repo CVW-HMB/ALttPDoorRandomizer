@@ -262,7 +262,7 @@ def district_item_pool_config(world):
             return item_cnt + kept, uncovered
 
         # choose a sphere one district
-        sphere_one_choices = [d for d, info in district_choices.items() if info[0]]
+        sphere_one_choices = sorted(d for d, info in district_choices.items() if info[0])
         sphere_one = random.choice(sphere_one_choices)
         adopt_district(sphere_one)
 
@@ -289,7 +289,7 @@ def district_item_pool_config(world):
             # nearby dungeons so those items can remain nearby; anything still
             # uncovered after selection is forced in-dungeon.
             weights = []
-            choices = list(district_choices.keys())
+            choices = sorted(district_choices.keys())
             for d_name in choices:
                 base = scale_total / scale_divisors[d_name]
                 covers = sum(1 for dungeons in uncovered.values() if d_name in dungeons)

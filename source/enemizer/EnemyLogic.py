@@ -130,7 +130,8 @@ def defeat_rule_multiple(world, player, enemy_sprite_region_pairs):
         if len(best_rules) == 1:
             vln_option, rule_pair_list = next(iter(best_rules.items()))
         else:
-            vln_option, rule_pair_list = random.choice(list(best_rules.items()))
+            stable_options = sorted(best_rules.items(), key=lambda kv: tuple(sorted(kv[0])))
+            vln_option, rule_pair_list = random.choice(stable_options)
         if best_size == 0:
             raise Exception('Invulnerable enemy? rules seems to be insufficient for this enemy set, please report:'
                             + ', '.join([str(x) for x, y in enemy_sprite_region_pairs]))

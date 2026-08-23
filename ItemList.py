@@ -915,6 +915,7 @@ def customize_shops(world, player):
                 if item.name in ['Bombs (3)', 'Bombs (10)']:
                     choices.append((shop, idx, loc, item))
             if len(choices) > 0:
+                choices.sort(key=lambda c: (c[0].region.name, c[1], c[2].name))
                 shop, idx, loc, item = random.choice(choices)
                 upgrade = ItemFactory('Bomb Upgrade (+5)', player)
                 up_price = final_price(loc.name, upgrade.price, world, player)
@@ -929,6 +930,7 @@ def customize_shops(world, player):
                 if item.name == 'Arrows (10)' or (item.name == 'Single Arrow' and not retro_bow):
                     choices.append((shop, idx, loc, item))
             if len(choices) > 0:
+                choices.sort(key=lambda c: (c[0].region.name, c[1], c[2].name))
                 shop, idx, loc, item = random.choice(choices)
                 upgrade = ItemFactory('Arrow Upgrade (+5)', player)
                 up_price = final_price(loc.name, upgrade.price, world, player)
