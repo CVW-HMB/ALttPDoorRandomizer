@@ -112,6 +112,8 @@ class World(object):
         self.fish = BabelFish()
         self.data_tables = {}
         self.damage_table = {}
+        # district + nearby: dungeon names whose nearby items are forced in-dungeon
+        self.district_nearby_forced_inside = defaultdict(set)
 
 
         for player in range(1, players + 1):
@@ -642,6 +644,7 @@ class CollectionState(object):
             self.dungeons_to_check = {player: defaultdict(dict) for player in range(1, parent.players + 1)}
         self.dungeon_limits = None
         self.placing_items = None
+        self.assume_shop_keys = False
         # self.trace = None
 
     def can_reach_from(self, spot, start, player=None):
@@ -1001,6 +1004,7 @@ class CollectionState(object):
                                        for name, checklist in self.dungeons_to_check[player].items()})
             for player in range(1, self.world.players + 1)}
         ret.placing_items = self.placing_items
+        ret.assume_shop_keys = self.assume_shop_keys
         return ret
 
     def apply_dungeon_exploration(self, rrp, player, dungeon_name, checklist):
@@ -1187,6 +1191,8 @@ class CollectionState(object):
         if self.world.keyshuffle[player] == 'universal':
             if self.world.mode[player] == 'standard' and self.world.doorShuffle[player] == 'vanilla' and item == 'Small Key (Escape)':
                 return True  # Cannot access the shop until escape is finished.  This is safe because the key is manually placed in make_custom_item_pool
+            if self.assume_shop_keys:
+                return True
             return self.can_buy_unlimited('Small Key (Universal)', player)
         if count == 1:
             return (item, player) in self.prog_items
@@ -1196,6 +1202,8 @@ class CollectionState(object):
         if self.world.keyshuffle[player] == 'universal':
             if self.world.mode[player] == 'standard' and self.world.doorShuffle[player] == 'vanilla' and item == 'Small Key (Escape)':
                 return True  # Cannot access the shop until escape is finished.  This is safe because the key is manually placed in make_custom_item_pool
+            if self.assume_shop_keys:
+                return True
             return self.can_buy_unlimited('Small Key (Universal)', player)
         obtained = self.prog_items[item, player] - self.forced_keys[item, player]
         return obtained >= count
@@ -1658,14 +1666,9 @@ class Region(object):
             ret = ret or (len(self.districts) and item_dungeon and len([d for d in self.districts if d in item_dungeon.districts]))
             return ret and item.player == self.player
 
-        inside_dungeon_item = ((item.smallkey and self.world.keyshuffle[item.player] == 'none')
-                               or (item.bigkey and self.world.bigkeyshuffle[item.player] == 'none')
-                               or (item.map and self.world.mapshuffle[item.player] == 'none')
-                               or (item.compass and self.world.compassshuffle[item.player] == 'none')
-                               or (item.prize and self.world.prizeshuffle[item.player] == 'dungeon'))
         # not all small keys to escape must be in escape
         # sewer_hack = self.world.mode[item.player] == 'standard' and item.name == 'Small Key (Escape)'
-        if inside_dungeon_item:
+        if item.is_inside_dungeon_item(self.world):
             return self.dungeon and self.dungeon.is_dungeon_item(item) and item.player == self.player
         return True
 
@@ -1789,7 +1792,7 @@ class Entrance(object):
             if follower_region.type not in [RegionType.LightWorld, RegionType.DarkWorld]:
                 ent_list = [e for e in start_region.entrances if e.parent_region.type != RegionType.Menu]
                 follower_region = ent_list[0].parent_region
-            if (follower_region.world.mode[self.player] != 'inverted') == (follower_region.type == RegionType.LightWorld):
+            elif (follower_region.world.mode[self.player] != 'inverted') == (follower_region.type == RegionType.LightWorld):
                 from OverworldShuffle import get_mirror_edges
                 mirror_map = get_mirror_edges(follower_region.world, follower_region, self.player)
                 while len(mirror_map) and not found:
@@ -1844,11 +1847,18 @@ class Entrance(object):
             if follower_region.type not in [RegionType.LightWorld, RegionType.DarkWorld]:
                 ent_list = [e for e in start_region.entrances if e.parent_region.type != RegionType.Menu]
                 follower_region = ent_list[0].parent_region
-            if (follower_region.world.mode[self.player] != 'inverted') == (follower_region.type == RegionType.LightWorld):
+            elif (follower_region.world.mode[self.player] != 'inverted') == (follower_region.type == RegionType.LightWorld):
                 dest_region = self.parent_region
                 if dest_region.type not in [RegionType.LightWorld, RegionType.DarkWorld]:
-                    dest_region = dest_region.entrances[0].parent_region
-                if (dest_region.world.mode[self.player] != 'inverted') != (dest_region.type == RegionType.LightWorld):
+                    if self.name == 'Revealing Light':
+                        # Maiden dest is inside TT (single lobby). Mirror portals belong
+                        # on the OW region leading into TT lobby, not an interior room.
+                        portal = dest_region.world.get_portal_unsafe('Thieves Town', self.player)
+                        ow_ent = portal.find_portal_entrance() if portal else None
+                        dest_region = ow_ent.parent_region if ow_ent else None
+                    else:
+                        dest_region = dest_region.entrances[0].parent_region if dest_region.entrances else None
+                elif (dest_region.world.mode[self.player] != 'inverted') != (dest_region.type == RegionType.LightWorld):
                     # loop thru potential places to leave a mirror portal
                     from OverworldShuffle import get_mirror_edges
                     mirror_map = get_mirror_edges(dest_region.world, dest_region, self.player)
@@ -1873,6 +1883,9 @@ class Entrance(object):
                                 traverse_paths(follower_region, mirror_exit.connected_region)
                                 state.collect(mirror_item, True)
                         mirror_map.pop(0)
+                    if found and self.name == 'Revealing Light' and dest_region != self.parent_region:
+                        found = False
+                        traverse_paths(dest_region, self.parent_region)
                     if found:
                         path = state.path.get(self.parent_region, (self.parent_region.name, None))
                         path = (mirror_exit.name, path)
@@ -2843,14 +2856,34 @@ class Item(object):
             item_dungeon = 'Hyrule Castle'
         return item_dungeon
 
+    def is_district_nearby_forced_inside(self, world):
+        forced = getattr(world, 'district_nearby_forced_inside', None)
+        if not forced:
+            return False
+        player_set = forced.get(self.player)
+        if not player_set:
+            return False
+        dungeon_name = self.dungeon
+        if not dungeon_name and self.prize and self.dungeon_object:
+            dungeon_name = self.dungeon_object.name
+        return bool(dungeon_name) and dungeon_name in player_set
+
     def is_inside_dungeon_item(self, world):
-        return ((self.prize and world.prizeshuffle[self.player] in ['none', 'dungeon'])
+        if ((self.prize and world.prizeshuffle[self.player] in ['none', 'dungeon'])
                 or (self.smallkey and world.keyshuffle[self.player] == 'none')
                 or (self.bigkey and world.bigkeyshuffle[self.player] == 'none')
                 or (self.compass and world.compassshuffle[self.player] == 'none')
-                or (self.map and world.mapshuffle[self.player] == 'none'))
+                or (self.map and world.mapshuffle[self.player] == 'none')):
+            return True
+        # district algorithm may force uncovered nearby items back in-dungeon
+        return self.is_nearby_by_setting(world) and self.is_district_nearby_forced_inside(world)
 
     def is_near_dungeon_item(self, world):
+        if not self.is_nearby_by_setting(world):
+            return False
+        return not self.is_district_nearby_forced_inside(world)
+
+    def is_nearby_by_setting(self, world):
         return ((self.prize and world.prizeshuffle[self.player] == 'nearby')
                 or (self.smallkey and world.keyshuffle[self.player] == 'nearby')
                 or (self.bigkey and world.bigkeyshuffle[self.player] == 'nearby')

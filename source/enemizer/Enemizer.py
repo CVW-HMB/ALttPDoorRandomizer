@@ -342,8 +342,18 @@ def randomize_underworld_rooms(data_tables, world, player, custom_uw):
                         drop_denials = data_tables.uw_enemy_drop_denials if enemy_drops_active else None
                         if is_custom_sprite_allowed(desired_sprite, room_id, i, data_tables,
                                                     data_tables.uw_enemy_denials, drop_denials, enemy_drops_active):
-                            sprite.kind = desired_sprite
-                            use_custom = True
+                            if sprite.drops_item:
+                                # Key drop slot: forced enemy must be capable of dropping the key
+                                req_key = (desired_sprite, 0)
+                                req = data_tables.sprite_requirements.get(req_key)
+                                forbidden = determine_forbidden(any_enemy_logic == 'none', room_id, True)
+                                if req is not None and not isinstance(req, dict) and req.good_for_key_drop(forbidden):
+                                    sprite.kind = desired_sprite
+                                    use_custom = True
+                                # else: use_custom stays False; random selection enforces good_for_key_drop
+                            else:
+                                sprite.kind = desired_sprite
+                                use_custom = True
                     if not use_custom:
                         # filter out water if necessary
                         candidate_sprites = [x for x in candidate_sprites if not x.water_only or sprite.water]
@@ -499,10 +509,11 @@ def randomize_enemies(world, player):
                 randomizeable = get_randomize_able_sprites_ow(area_id, data_tables)
                 if randomizeable:
                     custom_ow[area_id] = {i: world.force_enemy[player] for i in randomizeable.keys()}
-            custom_uw = {
-                room_id: {i: world.force_enemy[player] for i, s in enumerate(sprite_list)}
-                for room_id, sprite_list in world.data_tables[player].uw_enemy_table.room_map.items()
-            }
+            custom_uw = {}
+            for room_id in world.data_tables[player].uw_enemy_table.room_map:
+                randomizeable = get_randomize_able_sprites(room_id, data_tables)
+                if randomizeable:
+                    custom_uw[room_id] = {i: world.force_enemy[player] for i in randomizeable.keys()}
         else:
             enemy_map = world.customizer.get_enemies() if world.customizer else None
             if enemy_map:
@@ -521,8 +532,8 @@ def randomize_enemies(world, player):
                 custom_uw, data_tables.uw_enemy_denials, data_tables.uw_enemy_drop_denials, underworld_drops)
             filtered_custom_ow = filter_denied_custom_map(
                 custom_ow, data_tables.ow_enemy_denials)
-            randomize_underworld_sprite_sheets(data_tables.sprite_sheets, data_tables, filtered_custom_uw, world.limited_run[player])
-            randomize_overworld_sprite_sheets(data_tables.sprite_sheets, data_tables, filtered_custom_ow)
+            randomize_underworld_sprite_sheets(data_tables.sprite_sheets, data_tables, filtered_custom_uw, world.limited_run[player], force_enemy=world.force_enemy[player])
+            randomize_overworld_sprite_sheets(data_tables.sprite_sheets, data_tables, filtered_custom_ow, force_enemy=world.force_enemy[player])
         else:
             randomize_underworld_sprite_sheets(data_tables.sprite_sheets, data_tables, custom_uw, world.limited_run[player])
             randomize_overworld_sprite_sheets(data_tables.sprite_sheets, data_tables, custom_ow)

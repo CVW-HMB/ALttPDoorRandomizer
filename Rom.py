@@ -488,10 +488,8 @@ def patch_rom(world, rom, player, team, is_mystery=False, rom_header=None):
                 else:
                     itemid = 0x5A
 
-        if not location.locked and ((location.item.smallkey and world.keyshuffle[player] == 'none') or (
-            location.item.bigkey and world.bigkeyshuffle[player] == 'none') or (
-            location.item.map and world.mapshuffle[player] == 'none') or (
-            location.item.compass and world.compassshuffle[player] == 'none')):
+        if (not location.locked and location.item
+                and location.item.is_inside_dungeon_item(world)):
             itemid = handle_native_dungeon(location, itemid)
 
         rom.write_byte(location.address, itemid)
