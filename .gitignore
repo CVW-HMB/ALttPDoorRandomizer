@@ -43,7 +43,10 @@ resources/user/*
 get-pip.py
 
 venv
-/test
+/test/*
+!/test/suite
+/test/suite/*
+!/test/suite/automate
 test_games/
 docs/issues/*
 docs/ideas/*
