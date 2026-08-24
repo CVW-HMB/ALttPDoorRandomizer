@@ -335,6 +335,9 @@ def valid_reserved_placement(item, location, world):
     if item.prize:
         if (world.algorithm in ['major_only', 'dungeon_only', 'district']
                 and world.prizeshuffle[item.player] in ['dungeon', 'nearby']):
+            if (world.algorithm in ['district', 'dungeon_only']
+                    and item.is_inside_dungeon_item(world)):
+                return True
             return location_in_algorithm_restricted_set(location, world, item.player)
         return True
     if item.player == location.player and item.is_inside_dungeon_item(world):
