@@ -1202,6 +1202,23 @@ def do_same_world_connectors(lw_entrances, dw_entrances, caves, avail):
         # check if we can still fit the cave into our target group
         if len(target) < len(cave):
             if restriction:
+                # Temporary diagnostics for RestrictedCave-Assert triage.
+                other = dw_entrances if target is lw_entrances else lw_entrances
+                restricted_exits = {k: v for k, v in avail.same_world_restricted.items() if k in cave}
+                logging.getLogger('').error(
+                    'RestrictedCave diagnostics (main): '
+                    f'cave={list(cave)} size={len(cave)} restriction={restriction} '
+                    f'restricted_exits={restricted_exits} '
+                    f'target_len={len(target)} other_len={len(other)} '
+                    f'lw_len={len(lw_entrances)} dw_len={len(dw_entrances)} '
+                    f'remaining_caves={len(caves)} '
+                    f'target_sample={list(target)[:12]} '
+                    f'other_sample={list(other)[:12]} '
+                    f'remaining_cave_sizes={[len(x) if not isinstance(x, str) else 1 for x in caves]} '
+                    f'shuffle={avail.world.shuffle[avail.player]} mode={avail.world.mode[avail.player]} '
+                    f'inverted={avail.inverted} mixed={getattr(avail.world, "owMixed", None) and avail.world.owMixed[avail.player]} '
+                    f'doorShuffle={avail.world.doorShuffle[avail.player]}'
+                )
                 raise Exception('Not enough entrances for restricted cave, algorithm needs revision (main)')
             # need to use other set
             target = lw_entrances if target is dw_entrances else dw_entrances
