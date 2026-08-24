@@ -105,7 +105,7 @@ def link_entrances_new(world, player):
 
         avail_pool.swapped = mode_cfg['undefined'] == 'swap'
         avail_pool.keep_drops_together = mode_cfg['keep_drops_together'] == 'on' if 'keep_drops_together' in mode_cfg else True
-        avail_pool.assumed_loose_caves = not avail_pool.keep_drops_together and world.shuffle[player] == 'district'
+        avail_pool.assumed_loose_caves = world.shuffle[player] == 'district'
         avail_pool.coupled = mode_cfg['decoupled'] != 'on' if 'decoupled' in mode_cfg else True
         if avail_pool.is_standard():
             do_standard_connections(avail_pool)
@@ -1277,6 +1277,8 @@ def do_cross_world_connectors(entrances, caves, avail):
 
 def handle_skull_woods_drops(avail, pool, mode_cfg):
     skull_woods = avail.world.skullwoods[avail.player]
+    if avail.world.shuffle[avail.player] == 'district' and skull_woods not in ['restricted', 'loose']:
+        return
     if skull_woods in ['restricted', 'loose']:
         for drop in pool:
             target = drop_map[drop]
@@ -1298,6 +1300,8 @@ def handle_skull_woods_drops(avail, pool, mode_cfg):
 
 def handle_skull_woods_entrances(avail, pool):
     skull_woods = avail.world.skullwoods[avail.player]
+    if avail.world.shuffle[avail.player] == 'district' and skull_woods != 'restricted':
+        return
     if skull_woods in ['restricted', 'original']:
         entrances, exits = find_entrances_and_exits(avail, pool)
         if avail.world.shuffle[avail.player] in ['dungeonssimple', 'simple', 'restricted'] \
@@ -1468,7 +1472,7 @@ def do_limited_shuffle_exclude_drops(pool_def, avail, lw=True):
     if avail.inverted:
         lw = not lw
     _, exits = find_entrances_and_exits(avail, pool_def['entrances'])
-    reserved_drops = set(linked_drop_map.values())
+    reserved_drops = set(linked_drop_map.values()) if avail.keep_drops_together else set()
     must_exit_lw, must_exit_dw = must_exits_helper(avail)
     must_exit_lw = must_exit_filter(avail, must_exit_lw, LW_Entrances)
     must_exit_dw = must_exit_filter(avail, must_exit_dw, DW_Entrances)
@@ -2385,6 +2389,16 @@ modes = {
         'keep_drops_together': 'off',
         'cross_world': 'off',
         'pools': {
+            'skull_drops': {
+                'special': 'drops',
+                'entrances': ['Skull Woods First Section Hole (East)', 'Skull Woods First Section Hole (West)',
+                              'Skull Woods First Section Hole (North)', 'Skull Woods Second Section Hole']
+            },
+            'skull_doors': {
+                'special': 'skull',
+                'entrances': ['Skull Woods First Section Door', 'Skull Woods Second Section Door (East)',
+                              'Skull Woods Second Section Door (West)']
+            },
             'northwest_hyrule': {
                 'special': 'district',
                 'condition': 'lightworld',
