@@ -1,5 +1,6 @@
 .idea
 .vscode
+.grok
 *_Spoiler.txt
 *.bmbp
 *.log

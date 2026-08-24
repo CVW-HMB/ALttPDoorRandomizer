@@ -1,5 +1,16 @@
 # Changelog
 
+# 0.7.1.5
+- Fixed extra 300-Rupee items in item pool
+- Customized item_pool no longer flexibly expands when modes add item locations, use item_pool_adjust instead
+- Added missing shuffleganon setting in Customizer
+- Fixed many potential non-deterministic RNG violators
+- Fixed some issues with forced_enemy: gfx and replacing keydrop enemies
+- Fixed some error placement issues with prize shuffle, follower shuffle under some niche modes
+- Fixed some issues with nearby dungeon items
+- Fixed some issues with district, major_only, and dungeon item fill combining with some of our newer mode additions
+- Fixed various errors while placing entrances in some ER modes
+
 # 0.7.1.4
 - 2026 Easter Festive Fixes
 - Fixed forced_enemy option to abide enemy denials
