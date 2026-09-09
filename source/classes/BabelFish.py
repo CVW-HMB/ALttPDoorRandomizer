@@ -1,11 +1,22 @@
 import json
 import locale
 import os
+import warnings
 
 class BabelFish():
+	@staticmethod
+	def get_system_locale():
+		#get set localization
+		try:
+			with warnings.catch_warnings():
+				warnings.simplefilter("ignore", DeprecationWarning)
+				localization_string = locale.getdefaultlocale()[0]
+		except (ValueError, AttributeError):
+			localization_string = None
+		return localization_string[:2] if localization_string else "en"
+
 	def __init__(self,subpath=["resources","app","meta"],lang=None):
-		localization_string = locale.getdefaultlocale()[0] #get set localization
-		self.locale = localization_string[:2] if lang is None else lang #let caller override localization
+		self.locale = lang if lang is not None else self.get_system_locale() #let caller override localization
 		self.langs = ["en"] #start with English
 		if(not self.locale == "en"): #add localization
 			self.langs.append(self.locale)

@@ -48,7 +48,7 @@ python -m pytest test/dungeons/TestDarkPalace.py
 ### ROM Generation
 ```bash
 # Basic door shuffle seed
-python DungeonRandomizer.py --doorShuffle crossed --intensity 2
+python DungeonRandomizer.py --door_shuffle crossed --intensity 2
 
 # Suppress ROM output (for testing)
 python DungeonRandomizer.py --suppress_rom --spoiler none
@@ -244,7 +244,7 @@ Recent commits show work on:
 ## CLI Argument Reference
 
 Key arguments from `resources/app/cli/args.json`:
-- `--doorShuffle [vanilla|basic|partitioned|crossed]`
+- `--door_shuffle [vanilla|basic|partitioned|crossed]`
 - `--intensity [1|2|3]`
 - `--keyshuffle [none|wild|universal]`
 - `--key_logic [partial|strict|dangerous|experimental]`
