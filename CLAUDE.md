@@ -204,6 +204,10 @@ Tests verify location accessibility with various item combinations:
 
 Use `TestSuite.py` for batch generation testing across modes (Open/Standard/Inverted) and settings.
 
+## Code Comments
+
+Keep comments minimal and professional. Comment only what the code cannot say on its own, in the terse style of the surrounding file. No narration of what a line does, no conversational or AI-generated filler, no attribution.
+
 ## Important Development Notes
 
 ### Starting Items & Special Items
